@@ -22,3 +22,7 @@ class CompiledArtifacts:
     def add_all(self, files: list[CompiledFile]) -> None:
         for f in files:
             self.add(f)
+
+    def merge(self, other: "CompiledArtifacts") -> None:
+        """Merge another CompiledArtifacts into this one (other wins on collision)."""
+        self.files.update(other.files)
