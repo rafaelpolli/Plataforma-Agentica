@@ -198,39 +198,33 @@ def _gen_tool_http(node: Node) -> CompiledFile:
     headers["Authorization"] = f"Bearer {{get_secret('{secret_ref}')}}"
 '''
     elif auth_type == "oauth2_client_credentials":
-        token_url = auth.get("oauth2", {}).get("token_url", "")
+        # Token vending via AgentCore Identity — provider was created in
+        # infra/agentcore_identity.tf. The SDK handles caching, refresh,
+        # and short-lived credential rotation; no manual token cache here.
+        provider_name = node.config.get("name", node.id).lower().replace(" ", "-")
         scope = auth.get("oauth2", {}).get("scope", "")
+        scopes_arg = f', scopes="{scope}"' if scope else ""
         auth_block = f'''\
     headers["Authorization"] = f"Bearer {{_get_oauth2_token()}}"
 '''
         oauth2_preamble = f'''\
-import json as _json
-import time as _time
-import httpx as _httpx
-from ..config import get_secret
+import os
+from bedrock_agentcore.identity import IdentityClient
 
-_token_cache: dict = {{}}
+_identity = IdentityClient(region_name=os.environ.get("AWS_REGION", "us-east-1"))
+
 
 def _get_oauth2_token() -> str:
-    now = _time.time()
-    if _token_cache.get("expires_at", 0) - 60 > now:
-        return _token_cache["access_token"]
-    creds = _json.loads(get_secret("{secret_ref}"))
-    resp = _httpx.post(
-        "{token_url}",
-        data={{
-            "grant_type": "client_credentials",
-            "client_id": creds["client_id"],
-            "client_secret": creds["client_secret"],
-            {"'scope': '" + scope + "'," if scope else ""}
-        }},
-        timeout=30,
+    """Fetch an OAuth2 access token via AgentCore Identity (M2M / client credentials).
+
+    AgentCore Identity caches and rotates the token. The credential provider
+    (token endpoint, client id/secret) is configured in Terraform; this code
+    only references it by name.
+    """
+    return _identity.get_token(
+        provider_name=f"${{os.environ.get('AGENT_NAME', 'agent')}}-{provider_name}-oauth2",
+        grant_type="client_credentials"{scopes_arg},
     )
-    resp.raise_for_status()
-    token_data = resp.json()
-    _token_cache["access_token"] = token_data["access_token"]
-    _token_cache["expires_at"] = now + token_data.get("expires_in", 3600)
-    return _token_cache["access_token"]
 
 '''
     else:

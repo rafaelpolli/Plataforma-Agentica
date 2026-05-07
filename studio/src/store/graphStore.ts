@@ -9,7 +9,7 @@ import {
   type Node as FlowNode,
   type Edge as FlowEdge,
 } from '@xyflow/react';
-import type { AgentNode, AgentEdge, DataType, Project, ValidationError } from '../types/graph';
+import type { AgentNode, DataType, Project, ValidationError } from '../types/graph';
 
 export type NodeData = { node: AgentNode; validationErrors: ValidationError[] };
 export type AppFlowNode = FlowNode<NodeData>;
@@ -38,6 +38,8 @@ interface GraphStore {
 
   getProject: () => Project;
   getSelectedAgentNode: () => AgentNode | null;
+
+  loadProject: (project: Project) => void;
 }
 
 export const useGraphStore = create<GraphStore>((set, get) => ({
@@ -152,5 +154,34 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     const { nodes, selectedNodeId } = get();
     const found = nodes.find((n) => n.id === selectedNodeId);
     return found ? found.data.node : null;
+  },
+
+  loadProject: (project) => {
+    const flowNodes: AppFlowNode[] = project.nodes.map((agentNode) => ({
+      id: agentNode.id,
+      type: 'customNode',
+      position: agentNode.position,
+      data: { node: agentNode, validationErrors: [] },
+    }));
+
+    const flowEdges: AppFlowEdge[] = project.edges.map((e) => ({
+      id: e.id,
+      source: e.source_node_id,
+      sourceHandle: e.source_port_id,
+      target: e.target_node_id,
+      targetHandle: e.target_port_id,
+      type: 'default',
+      data: { data_type: e.data_type },
+      style: { stroke: '#4b5563', strokeWidth: 2 },
+      animated: false,
+    }));
+
+    set({
+      nodes: flowNodes,
+      edges: flowEdges,
+      projectName: project.name,
+      selectedNodeId: null,
+      validationErrors: [],
+    });
   },
 }));

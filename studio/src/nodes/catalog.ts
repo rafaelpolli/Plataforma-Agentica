@@ -130,7 +130,7 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
       { key: 'memory.ttl_seconds', label: 'Memory TTL (seconds)', type: 'number', min: 60 },
     ],
     defaultPorts: {
-      inputs: [p('message', 'User message', 'string', true), p('context', 'Context', 'json')],
+      inputs: [p('message', 'User message', 'any', true), p('context', 'Context', 'any')],
       outputs: [p('response', 'Agent response', 'string'), p('tool_calls', 'Tool calls log', 'json')],
     },
   },
@@ -150,7 +150,7 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
       { key: 'max_iterations', label: 'Max iterations', type: 'number', min: 1, max: 100 },
     ],
     defaultPorts: {
-      inputs: [p('task', 'Task', 'string', true)],
+      inputs: [p('task', 'Task', 'any', true)],
       outputs: [p('result', 'Result', 'json')],
     },
   },
@@ -170,7 +170,7 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
       { key: 'timeout_action', label: 'Timeout action', type: 'enum', options: ['reject', 'approve'] },
     ],
     defaultPorts: {
-      inputs: [p('payload', 'Payload for review', 'json', true)],
+      inputs: [p('payload', 'Payload for review', 'any', true)],
       outputs: [p('approved', 'Approved', 'json'), p('rejected', 'Rejected', 'string')],
     },
   },
@@ -289,6 +289,38 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
     defaultPorts: {
       inputs: [p('input', 'Input', 'json', true)],
       outputs: [p('output', 'Output', 'json')],
+    },
+  },
+
+  code_interpreter: {
+    type: 'code_interpreter',
+    label: 'Code Interpreter',
+    description: 'Executes Python code in an AgentCore managed sandbox. No infrastructure required.',
+    category: 'Agents & Orchestration',
+    icon: '🐍',
+    categoryColor: 'border-purple-500',
+    defaultConfig: { timeout_seconds: 30 },
+    configSchema: [
+      { key: 'timeout_seconds', label: 'Timeout (seconds)', type: 'number', min: 1, max: 900 },
+    ],
+    defaultPorts: {
+      inputs: [p('input', 'Code + context', 'json', true)],
+      outputs: [p('result', 'Execution result', 'json'), p('error', 'Error', 'string')],
+    },
+  },
+
+  browser_tool: {
+    type: 'browser_tool',
+    label: 'Browser Tool',
+    description: 'Navigates web pages and extracts content via AgentCore managed headless browser.',
+    category: 'Agents & Orchestration',
+    icon: '🌍',
+    categoryColor: 'border-purple-500',
+    defaultConfig: {},
+    configSchema: [],
+    defaultPorts: {
+      inputs: [p('input', 'URL + action', 'json', true)],
+      outputs: [p('result', 'Page result', 'json')],
     },
   },
 
@@ -417,7 +449,7 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
       { key: 'top_k', label: 'Top K results', type: 'number', min: 1, max: 100 },
     ],
     defaultPorts: {
-      inputs: [p('query', 'Query', 'string', true), p('retriever', 'Retriever', 'retriever', true)],
+      inputs: [p('query', 'Query', 'any', true), p('retriever', 'Retriever', 'retriever', true)],
       outputs: [p('documents', 'Documents', 'document')],
     },
   },
@@ -550,7 +582,7 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
 
 export const CATEGORY_NODES: Record<NodeCategory, NodeType[]> = {
   'Input / Output': ['input', 'output'],
-  'Agents & Orchestration': ['agent', 'multi_agent_coordinator', 'human_in_the_loop'],
+  'Agents & Orchestration': ['agent', 'multi_agent_coordinator', 'human_in_the_loop', 'code_interpreter', 'browser_tool'],
   'Tools': ['tool_custom', 'tool_athena', 'tool_s3', 'tool_http', 'tool_bedrock'],
   'MCP': ['mcp_server', 'mcp_client'],
   'Knowledge Base / RAG': ['kb_s3_vector', 'kb_bedrock', 'chunking', 'embedding', 'retriever'],

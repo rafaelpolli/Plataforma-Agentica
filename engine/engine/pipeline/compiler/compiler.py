@@ -22,7 +22,12 @@ def compile_graph(project: Project, sorted_nodes: list[Node]) -> CompiledArtifac
     artifacts = CompiledArtifacts()
 
     # Package init files
-    for init_path in ("agent/__init__.py", "agent/nodes/__init__.py", "agent/tools/__init__.py"):
+    for init_path in (
+        "agent/__init__.py",
+        "agent/nodes/__init__.py",
+        "agent/tools/__init__.py",
+        "mcp_server/__init__.py",
+    ):
         artifacts.add(CompiledFile(path=init_path, content=""))
 
     # state.py

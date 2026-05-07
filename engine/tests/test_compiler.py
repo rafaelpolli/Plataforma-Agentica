@@ -82,23 +82,28 @@ def test_no_hitl_graph_has_no_checkpointer(minimal_project):
     assert "DynamoDBSaver" not in graph_py
 
 
-def test_runner_has_lambda_handler(minimal_project):
+def test_runner_uses_agentcore_app(minimal_project):
     result = validate(minimal_project)
     artifacts = compile_graph(minimal_project, result.sorted_nodes)
     runner = artifacts.files["agent/runner.py"]
-    assert "def lambda_handler" in runner
-    assert "graph.invoke" in runner
+    assert "BedrockAgentCoreApp" in runner
+    assert "from bedrock_agentcore.runtime import BedrockAgentCoreApp" in runner
+    assert "@app.entrypoint" in runner
+    assert "graph.ainvoke" in runner
+    assert "app.run()" in runner
+    # Must not regress to Lambda-style handlers
+    assert "def lambda_handler" not in runner
+    assert "streaming_lambda_handler" not in runner
 
 
-def test_streaming_runner_generated_for_streaming_agent(minimal_project):
-    # Enable streaming on the agent node
+def test_streaming_runner_uses_agentcore_streaming_entrypoint(minimal_project):
     for n in minimal_project.nodes:
         if n.type == "agent":
             n.config["streaming"] = True
     result = validate(minimal_project)
     artifacts = compile_graph(minimal_project, result.sorted_nodes)
     runner = artifacts.files["agent/runner.py"]
-    assert "streaming_lambda_handler" in runner
+    assert "@app.streaming_entrypoint" in runner
     assert "astream" in runner
 
 

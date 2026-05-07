@@ -58,7 +58,7 @@ def minimal_project() -> Project:
             "system_prompt": "You are helpful.",
             "tools": [],
         },
-        inputs=[make_port("message", "User message", "string", required=True)],
+        inputs=[make_port("message", "User message", "any", required=True)],
         outputs=[make_port("response", "Agent response", "string")],
     )
     output_node = make_node(
@@ -67,7 +67,7 @@ def minimal_project() -> Project:
         inputs=[make_port("payload", "Payload", "any", required=True)],
     )
     edges = [
-        make_edge("n_input", "payload", "n_agent", "message", "string"),
+        make_edge("n_input", "payload", "n_agent", "message", "json"),
         make_edge("n_agent", "response", "n_output", "payload", "string"),
     ]
     return Project(name="test-agent", nodes=[input_node, agent_node, output_node], edges=edges)

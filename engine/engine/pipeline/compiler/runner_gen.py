@@ -1,8 +1,15 @@
-"""Generates agent/runner.py — Lambda handler and CLI entrypoint."""
+"""Generates agent/runner.py — Bedrock AgentCore Runtime entrypoint.
+
+Hosting model: the agent runs inside an AgentCore Runtime container
+(aws_bedrockagentcore_agent_runtime). The container's process is
+`python -m agent.runner`, which starts the BedrockAgentCoreApp HTTP
+server. There is no Lambda handler — AgentCore manages 8-hour sessions,
+auto-scaling, response streaming, A2A protocol, and observability.
+"""
 from __future__ import annotations
 
 from ..._types import CompiledFile
-from ...models.graph import Node, Project
+from ...models.graph import Project
 
 
 def generate_runner(project: Project) -> CompiledFile:
@@ -10,82 +17,99 @@ def generate_runner(project: Project) -> CompiledFile:
         n.config.get("streaming", False)
         for n in project.nodes if n.type == "agent"
     )
-    has_hitl = project.has_node_type("human_in_the_loop")
 
-    streaming_handler = ""
+    streaming_entrypoint = ""
     if has_streaming:
-        streaming_handler = '''
+        streaming_entrypoint = '''
 
-async def streaming_lambda_handler(event: dict, context) -> None:
-    """Streaming handler — requires Lambda response streaming + WebSocket/chunked API Gateway.
+@app.streaming_entrypoint
+async def invoke_stream(payload: dict, session_context: dict):
+    """AgentCore Runtime streaming handler — yields tokens via SSE.
 
-    Terraform must set: FunctionResponseTypes = ["STREAMRESPONSE"]
+    AgentCore Runtime handles transport, backpressure, and reconnection.
     """
-    body = _parse_body(event)
-    thread_id = body.get("thread_id", str(uuid.uuid4()))
+    body = payload if isinstance(payload, dict) else {}
+    session_id = session_context.get("session_id") or body.get("thread_id") or str(uuid.uuid4())
+    actor_id = (
+        session_context.get("actor_id")
+        or session_context.get("user_id")
+        or body.get("actor_id")
+        or "anonymous"
+    )
+    thread_id = session_id
     config = {"configurable": {"thread_id": thread_id}}
-    state = _build_initial_state(body)
+    state = _build_initial_state(body, actor_id=actor_id, session_id=session_id)
 
     async for chunk in graph.astream(state, config=config, stream_mode="messages"):
         message, _ = chunk
         if hasattr(message, "content") and message.content:
-            yield json.dumps({"token": message.content, "thread_id": thread_id}).encode() + b"\\n"
+            yield {"token": message.content, "thread_id": thread_id}
 '''
 
     content = f'''\
+"""AgentCore Runtime entrypoint for the generated agent.
+
+Run locally:    python -m agent.runner
+Run in Docker:  docker run -p 8080:8080 <image>
+Deploy:         terraform apply (creates aws_bedrockagentcore_agent_runtime)
+Invoke:         POST {{agentcore_runtime_url}}/invocations
+"""
 from __future__ import annotations
 
 import json
 import uuid
 
 from langchain_core.messages import HumanMessage
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 from .graph import graph
 from .state import AgentState
 
-
-def _parse_body(event: dict) -> dict:
-    body = event.get("body", {{}})
-    if isinstance(body, str):
-        body = json.loads(body)
-    return body or {{}}
+# AgentCore Runtime application — the only runtime entrypoint.
+# Provides built-in HTTP server, session management, streaming, OTEL
+# observability, and A2A protocol support.
+app = BedrockAgentCoreApp()
 
 
-def _build_initial_state(body: dict) -> AgentState:
+def _build_initial_state(body: dict, actor_id: str, session_id: str) -> AgentState:
+    """Builds initial AgentState. actor_id/session_id are surfaced for AgentCore Memory."""
     message = body.get("message", "")
     return AgentState(
         messages=[HumanMessage(content=message)] if message else [],
-        **{{k: v for k, v in body.items() if k not in ("message", "thread_id")}},
+        actor_id=actor_id,
+        session_id=session_id,
+        **{{k: v for k, v in body.items() if k not in ("message", "thread_id", "actor_id", "session_id")}},
     )
 
 
-def lambda_handler(event: dict, context) -> dict:
-    body = _parse_body(event)
-    thread_id = body.get("thread_id", str(uuid.uuid4()))
+@app.entrypoint
+async def invoke(payload: dict, session_context: dict) -> dict:
+    """AgentCore Runtime sync handler — invoked via A2A or AgentCore InvokeAgentRuntime."""
+    body = payload if isinstance(payload, dict) else {{}}
+    session_id = session_context.get("session_id") or body.get("thread_id") or str(uuid.uuid4())
+    actor_id = (
+        session_context.get("actor_id")
+        or session_context.get("user_id")
+        or body.get("actor_id")
+        or "anonymous"
+    )
+    thread_id = session_id
     config = {{"configurable": {{"thread_id": thread_id}}}}
-    state = _build_initial_state(body)
+    state = _build_initial_state(body, actor_id=actor_id, session_id=session_id)
 
-    result = graph.invoke(state, config=config)
+    result = await graph.ainvoke(state, config=config)
 
     final_output = result.get("final_output")
     if final_output is None:
-        # Fall back: last message content
         msgs = result.get("messages", [])
         final_output = msgs[-1].content if msgs else ""
 
-    return {{
-        "statusCode": 200,
-        "headers": {{"Content-Type": "application/json"}},
-        "body": json.dumps({{"response": final_output, "thread_id": thread_id}}),
-    }}
-{streaming_handler}
+    return {{"response": final_output, "thread_id": thread_id}}
+{streaming_entrypoint}
 
 if __name__ == "__main__":
-    import sys
-
-    payload = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {{}}
-    fake_event = {{"body": json.dumps(payload)}}
-    result = lambda_handler(fake_event, None)
-    print(result["body"])
+    # AgentCore Runtime container entrypoint.
+    # `app.run()` starts the HTTP server on 0.0.0.0:8080 by default.
+    app.run()
 '''
     return CompiledFile(path="agent/runner.py", content=content)

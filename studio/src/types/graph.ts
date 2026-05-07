@@ -13,6 +13,8 @@ export type NodeType =
   | 'tool_bedrock'
   | 'mcp_server'
   | 'mcp_client'
+  | 'code_interpreter'
+  | 'browser_tool'
   | 'kb_s3_vector'
   | 'kb_bedrock'
   | 'chunking'

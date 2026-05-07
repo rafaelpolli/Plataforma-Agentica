@@ -1,6 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useGraphStore } from '../../store/graphStore';
 import { validateGraph, generateZip } from '../../api/engine';
+import { importAgentZip, ImportError } from '../../api/import';
+import { HelpPanel } from '../Help/HelpPanel';
 
 type Status = 'idle' | 'validating' | 'valid' | 'invalid' | 'generating' | 'error';
 
@@ -22,12 +24,29 @@ export function Toolbar() {
   const projectName = useGraphStore((s) => s.projectName);
   const setProjectName = useGraphStore((s) => s.setProjectName);
   const getProject = useGraphStore((s) => s.getProject);
+  const loadProject = useGraphStore((s) => s.loadProject);
   const setValidationErrors = useGraphStore((s) => s.setValidationErrors);
   const clearValidation = useGraphStore((s) => s.clearValidation);
   const validationErrors = useGraphStore((s) => s.validationErrors);
+  const hasContent = useGraphStore((s) => s.nodes.length > 0 || s.edges.length > 0);
 
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (!inField && e.key === '?') {
+        e.preventDefault();
+        setHelpOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const onValidate = useCallback(async () => {
     setStatus('validating');
@@ -41,6 +60,36 @@ export function Toolbar() {
       setErrorMsg(String(e));
     }
   }, [getProject, setValidationErrors, clearValidation]);
+
+  const onImportClick = useCallback(() => {
+    if (hasContent) {
+      const ok = window.confirm(
+        'Importing a ZIP will replace the current canvas. Continue?',
+      );
+      if (!ok) return;
+    }
+    fileInputRef.current?.click();
+  }, [hasContent]);
+
+  const onFileSelected = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+
+      setStatus('idle');
+      setErrorMsg('');
+      try {
+        const project = await importAgentZip(file);
+        loadProject(project);
+        setStatus('valid');
+      } catch (err) {
+        setStatus('error');
+        setErrorMsg(err instanceof ImportError ? err.message : `Import failed: ${String(err)}`);
+      }
+    },
+    [loadProject],
+  );
 
   const onGenerate = useCallback(async () => {
     setStatus('generating');
@@ -87,6 +136,23 @@ export function Toolbar() {
       <div className="w-px h-6 bg-gray-700" />
 
       {/* Actions */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".zip,application/zip"
+        className="hidden"
+        onChange={onFileSelected}
+      />
+
+      <button
+        onClick={onImportClick}
+        disabled={status === 'validating' || status === 'generating'}
+        title="Import a previously generated agent ZIP and edit its graph"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg disabled:opacity-50 transition-colors"
+      >
+        <span>⬆</span> Import ZIP
+      </button>
+
       <button
         onClick={onValidate}
         disabled={status === 'validating' || status === 'generating'}
@@ -102,6 +168,17 @@ export function Toolbar() {
       >
         <span>⬇</span> Generate ZIP
       </button>
+
+      <button
+        onClick={() => setHelpOpen(true)}
+        title="Help (?)"
+        aria-label="Open help"
+        className="flex items-center justify-center w-8 h-8 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-full transition-colors"
+      >
+        ?
+      </button>
+
+      {helpOpen && <HelpPanel onClose={() => setHelpOpen(false)} />}
     </header>
   );
 }

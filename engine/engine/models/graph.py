@@ -15,6 +15,7 @@ NodeType = Literal[
     "kb_s3_vector", "kb_bedrock", "chunking", "embedding", "retriever",
     "s3_source", "document_parser", "ingest_pipeline",
     "mcp_server", "mcp_client",
+    "code_interpreter", "browser_tool",
     "condition", "loop", "cache", "logger",
 ]
 

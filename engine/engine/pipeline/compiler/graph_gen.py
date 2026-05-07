@@ -130,7 +130,7 @@ def generate_graph(project: Project, sorted_nodes: list[Node], node_map: dict[st
         if n.type == "loop":
             loop_targets = [tgt for _, tgt in outgoing.get(n.id, []) if tgt in graph_node_ids]
             lines.append(
-                f'    graph.add_conditional_edges("node_{n.id}_fanout", node_{n.id}_fanout, ["node_{n.id}_process"])'
+                f'    graph.add_conditional_edges("node_{n.id}_fanout", node_{n.id}_fanout)'
             )
             lines.append(f'    graph.add_edge("node_{n.id}_process", "node_{n.id}_fanin")')
             for tgt in loop_targets:
@@ -156,7 +156,7 @@ def generate_graph(project: Project, sorted_nodes: list[Node], node_map: dict[st
     ]
     if has_hitl:
         imports += [
-            "from langgraph.checkpoint.dynamodb import DynamoDBSaver",
+            "from langgraph_checkpoint_aws import DynamoDBSaver",
             "",
             "from .config import AWS_REGION, CHECKPOINTER_TABLE",
         ]

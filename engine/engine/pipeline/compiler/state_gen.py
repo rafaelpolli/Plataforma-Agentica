@@ -42,6 +42,16 @@ def collect_state_fields(project: Project, node_map: dict[str, Node]) -> dict[st
     if project.has_node_type("agent") or project.has_node_type("multi_agent_coordinator"):
         fields["messages"] = "Annotated[List[BaseMessage], operator.add]"
 
+    # AgentCore Runtime session identity — populated by the runner from
+    # session_context. Used by AgentCore Memory to scope events per user/session.
+    has_memory = any(
+        n.config.get("memory", {}).get("enabled", False)
+        for n in project.nodes if n.type == "agent"
+    )
+    if has_memory:
+        fields["actor_id"] = "str"
+        fields["session_id"] = "str"
+
     for edge in project.edges:
         if _is_message_edge(edge, node_map):
             continue  # handled by the `messages` field above

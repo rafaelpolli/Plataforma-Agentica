@@ -172,12 +172,14 @@ function NodeConfigForm({ node, onConfigChange, onLabelChange }: NodeConfigFormP
 
 export function ConfigPanel() {
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
-  const getSelectedAgentNode = useGraphStore((s) => s.getSelectedAgentNode);
+  const node = useGraphStore((s) => {
+    if (!s.selectedNodeId) return null;
+    const found = s.nodes.find((n) => n.id === s.selectedNodeId);
+    return found ? found.data.node : null;
+  });
   const updateNodeConfig = useGraphStore((s) => s.updateNodeConfig);
   const updateNodeLabel = useGraphStore((s) => s.updateNodeLabel);
   const removeNode = useGraphStore((s) => s.removeNode);
-
-  const node = getSelectedAgentNode();
 
   if (!node) {
     return (

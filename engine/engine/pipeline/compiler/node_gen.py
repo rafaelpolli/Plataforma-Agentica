@@ -26,8 +26,10 @@ def generate_node(node: Node, project: Project, node_map: dict[str, Node]) -> Co
         "document_parser": _gen_passthrough,
         "s3_source": _gen_passthrough,
         "ingest_pipeline": _gen_passthrough,
-        "mcp_client": _gen_passthrough,
-        "mcp_server": None,  # deployed separately on AgentCore
+        "mcp_client": _gen_mcp_client,
+        "mcp_server": _gen_mcp_server,   # generates mcp_server/server.py
+        "code_interpreter": _gen_code_interpreter,
+        "browser_tool": _gen_browser_tool,
     }
     generator = dispatch.get(node.type)
     if generator is None:
@@ -48,13 +50,13 @@ def _gen_agent(node: Node, project: Project, node_map: dict[str, Node]) -> Compi
     model_id = node.config.get("model_id", "")
     profile_arn = node.config.get("inference_profile_arn", "")
     effective_model = profile_arn if profile_arn else model_id
-    model_kwarg = "model_id" if not profile_arn else "model_id"
 
     system_prompt = node.config.get("system_prompt", "You are a helpful assistant.").replace('"', '\\"')
     temperature = node.config.get("temperature", 0.7)
     max_tokens = node.config.get("max_tokens", 4096)
     streaming = node.config.get("streaming", False)
     nid = node.id
+    memory_enabled = node.config.get("memory", {}).get("enabled", False)
 
     guardrails = node.config.get("guardrails", {})
     guardrail_config = ""
@@ -66,7 +68,101 @@ def _gen_agent(node: Node, project: Project, node_map: dict[str, Node]) -> Compi
     response_key = _state_key(nid, "response")
     tool_calls_key = _state_key(nid, "tool_calls")
 
-    content = f'''\
+    if memory_enabled:
+        memory_cfg = node.config.get("memory", {})
+        namespace = memory_cfg.get("namespace", "default")
+        top_k = memory_cfg.get("top_k", 5)
+        content = f'''\
+import logging
+
+from langchain_aws import ChatBedrock
+from langgraph.prebuilt import create_react_agent
+from bedrock_agentcore.memory import MemoryClient
+
+from ..config import AWS_REGION, MEMORY_ID
+from ..state import AgentState
+from ..tools import get_tools_for_agent
+
+_log = logging.getLogger(__name__)
+
+_model = ChatBedrock(
+    model_id="{effective_model}",
+    model_kwargs={{"temperature": {temperature}, "max_tokens": {max_tokens}}}{guardrail_config},
+    streaming={streaming},
+)
+_memory = MemoryClient(region_name=AWS_REGION) if MEMORY_ID else None
+_base_prompt = "{system_prompt}"
+_NAMESPACE = "{namespace}"
+_TOP_K = {top_k}
+
+
+def _format_memories(records: list[dict]) -> str:
+    """Flattens AgentCore retrieve_memories records into prompt-friendly bullets."""
+    lines = []
+    for r in records:
+        content = r.get("content") or {{}}
+        text = content.get("text") if isinstance(content, dict) else str(content)
+        if text:
+            lines.append(f"- {{text}}")
+    return "\\n".join(lines)
+
+
+async def node_{nid}(state: AgentState) -> dict:
+    query_msgs = state.get("messages", [])
+    query_text = query_msgs[-1].content if query_msgs else ""
+
+    # AgentCore Runtime injects these into state via the runner.
+    actor_id = state.get("actor_id", "anonymous")
+    session_id = state.get("session_id", "default-session")
+
+    prompt = _base_prompt
+    if _memory and query_text:
+        try:
+            records = _memory.retrieve_memories(
+                memory_id=MEMORY_ID,
+                namespace=_NAMESPACE,
+                query=query_text,
+                top_k=_TOP_K,
+            )
+            mem_context = _format_memories(records or [])
+            if mem_context:
+                prompt = f"{{_base_prompt}}\\n\\n[Relevant memories]:\\n{{mem_context}}"
+        except Exception as e:
+            _log.warning("AgentCore Memory retrieve failed: %s", e)
+
+    agent = create_react_agent(_model, get_tools_for_agent("{nid}"), prompt=prompt)
+    result = await agent.ainvoke({{"messages": state["messages"]}})
+    messages = result["messages"]
+
+    if _memory and query_text:
+        try:
+            response_text = messages[-1].content if messages else ""
+            # create_event records the conversation turn into AgentCore Memory.
+            # Configured strategies (SEMANTIC, SUMMARIZATION, USER_PREFERENCE)
+            # automatically extract long-term facts asynchronously.
+            _memory.create_event(
+                memory_id=MEMORY_ID,
+                actor_id=actor_id,
+                session_id=session_id,
+                messages=[
+                    (query_text, "USER"),
+                    (response_text, "ASSISTANT"),
+                ],
+            )
+        except Exception as e:
+            _log.warning("AgentCore Memory create_event failed: %s", e)
+
+    return {{
+        "messages": messages,
+        "{response_key}": messages[-1].content if messages else "",
+        "{tool_calls_key}": [
+            {{"name": m.name, "args": m.additional_kwargs}}
+            for m in messages if hasattr(m, "name") and m.name
+        ],
+    }}
+'''
+    else:
+        content = f'''\
 from langchain_aws import ChatBedrock
 from langgraph.prebuilt import create_react_agent
 
@@ -81,7 +177,7 @@ _model = ChatBedrock(
 _agent = create_react_agent(
     _model,
     get_tools_for_agent("{nid}"),
-    state_modifier="{system_prompt}",
+    prompt="{system_prompt}",
 )
 
 
@@ -179,11 +275,10 @@ def _gen_condition(node: Node, project: Project, node_map: dict[str, Node]) -> C
         import_line = "import jmespath"
     else:  # cel
         eval_block = f'''\
-    import cel as cel_lib
-    prog = cel_lib.Environment().compile("{expression}")
+    prog = cel_env.compile("{expression}")
     result = prog.evaluate({{"payload": payload}})
     return "true" if result else "false"'''
-        import_line = ""
+        import_line = "import celpy\ncel_env = celpy.Environment()"
 
     content = f'''\
 {import_line}
@@ -203,10 +298,7 @@ def _gen_loop(node: Node, project: Project, node_map: dict[str, Node]) -> Compil
     nid = node.id
     input_key = _first_input_key(node, project.edges)
     results_key = _state_key(nid, "results")
-    max_par = node.config.get("max_parallelism", 1)
-    error_strategy = node.config.get("error_strategy", "fail_fast")
 
-    # Fan-out: emits Send() per item; fan-in collector aggregates results
     content = f'''\
 from typing import Annotated, List
 import operator
@@ -328,26 +420,48 @@ def node_{nid}(state: AgentState) -> dict:
 
 
 def _gen_kb_s3_vector(node: Node, project: Project, node_map: dict[str, Node]) -> CompiledFile:
+    """Real S3 Vectors client — queries native AWS vector store via boto3."""
     nid = node.id
     bucket = node.config.get("bucket", "")
     index_name = node.config.get("index_name", "")
     embedding_model = node.config.get("embedding_model_id", "amazon.titan-embed-text-v2:0")
     retriever_key = _state_key(nid, "retriever")
+    docs_key = _state_key(nid, "documents")
 
     content = f'''\
 import boto3
 from langchain_aws.embeddings import BedrockEmbeddings
-from langchain_community.vectorstores import FAISS
 
+from ..config import AWS_REGION
 from ..state import AgentState
 
+_embeddings = BedrockEmbeddings(model_id="{embedding_model}", region_name=AWS_REGION)
+_s3v = boto3.client("s3vectors", region_name=AWS_REGION)
 
-def node_{nid}(state: AgentState) -> dict:
-    """Builds a retriever backed by Amazon S3 Vectors (bucket: {bucket}, index: {index_name})."""
-    embeddings = BedrockEmbeddings(model_id="{embedding_model}")
-    # TODO: replace with S3 Vectors native client when langchain-aws adds support
-    retriever = embeddings  # placeholder
-    return {{"{retriever_key}": retriever}}
+
+async def node_{nid}(state: AgentState) -> dict:
+    """Queries S3 Vectors store (bucket: {bucket}, index: {index_name})."""
+    query_msgs = state.get("messages", [])
+    query_text = query_msgs[-1].content if query_msgs else ""
+
+    query_vec = _embeddings.embed_query(query_text)
+
+    response = _s3v.query_vectors(
+        vectorBucketName="{bucket}",
+        indexName="{index_name}",
+        queryVector={{"float32": query_vec}},
+        topK=5,
+        returnMetadata=True,
+    )
+
+    docs = [
+        {{
+            "content": v.get("metadata", {{}}).get("text", ""),
+            "metadata": v.get("metadata", {{}}),
+        }}
+        for v in response.get("vectors", [])
+    ]
+    return {{"{retriever_key}": docs, "{docs_key}": docs}}
 '''
     return CompiledFile(path=f"agent/nodes/{nid}.py", content=content)
 
@@ -401,10 +515,166 @@ async def node_{nid}(state: AgentState) -> dict:
     query = state.get("messages", [])
     query_text = query[-1].content if query else ""
 
-    docs = await retriever.aget_relevant_documents(query_text, k={top_k}){threshold_filter}
+    docs = await retriever.ainvoke(
+        query_text, config={{"configurable": {{"search_kwargs": {{"k": {top_k}}}}}}}
+    ){threshold_filter}
     return {{"{docs_key}": [
         {{"content": d.page_content, "metadata": d.metadata}} for d in docs
     ]}}
+'''
+    return CompiledFile(path=f"agent/nodes/{nid}.py", content=content)
+
+
+def _gen_mcp_server(node: Node, project: Project, node_map: dict[str, Node]) -> CompiledFile:
+    """Generates mcp_server/server.py — AgentCore MCP server exposing tool nodes."""
+    name = node.config.get("name", node.id).replace('"', '\\"')
+    transport = node.config.get("transport", "stdio")
+
+    tool_nodes = [n for n in project.nodes if n.is_tool()]
+    tool_imports = ""
+    tool_registrations = ""
+    for tn in tool_nodes:
+        fn_name = tn.config.get("name", f"tool_{tn.id}").replace("-", "_").lower()
+        desc = tn.config.get("description", f"Tool {tn.id}").replace('"', '\\"')
+        tool_imports += f"from agent.tools.{tn.id} import {fn_name} as _impl_{fn_name}\n"
+        tool_registrations += f'''
+
+@server.tool(description="{desc}")
+async def {fn_name}(input: dict) -> dict:
+    return await _impl_{fn_name}(input)
+'''
+
+    content = f'''\
+"""MCP Server for {name} — exposes agent tools via Model Context Protocol.
+
+Deploy on AgentCore:
+  bedrock-agentcore deploy mcp-server ./mcp_server/
+
+Run locally (stdio transport):
+  python -m mcp_server.server
+"""
+from bedrock_agentcore.mcp import MCPServer
+{tool_imports}
+
+server = MCPServer("{name}")
+{tool_registrations}
+
+if __name__ == "__main__":
+    server.run(transport="{transport}")
+'''
+    return CompiledFile(path="mcp_server/server.py", content=content)
+
+
+def _gen_mcp_client(node: Node, project: Project, node_map: dict[str, Node]) -> CompiledFile:
+    """Real MCP client using langchain-mcp-adapters."""
+    nid = node.id
+    server_url = node.config.get("server_url", "")
+    transport = node.config.get("transport", "sse")
+    auth = node.config.get("auth", {})
+    tools_key = _state_key(nid, "tools")
+
+    auth_block = ""
+    if auth.get("type") == "bearer" and auth.get("secret_ref"):
+        secret_name = auth["secret_ref"].replace("secret://", "")
+        auth_block = f'''
+import functools
+import boto3
+from ..config import AWS_REGION
+
+
+@functools.lru_cache(maxsize=1)
+def _get_bearer_token() -> str:
+    return boto3.client("secretsmanager", region_name=AWS_REGION).get_secret_value(
+        SecretId="{secret_name}"
+    )["SecretString"]
+'''
+
+    content = f'''\
+from langchain_mcp_adapters.client import MultiServerMCPClient
+
+from ..state import AgentState
+{auth_block}
+
+_mcp_client = MultiServerMCPClient(
+    {{
+        "{nid}": {{
+            "url": "{server_url}",
+            "transport": "{transport}",
+        }}
+    }}
+)
+
+
+async def node_{nid}(state: AgentState) -> dict:
+    """Loads tools from MCP server at {server_url}."""
+    tools = await _mcp_client.get_tools()
+    return {{"{tools_key}": [t.name for t in tools]}}
+'''
+    return CompiledFile(path=f"agent/nodes/{nid}.py", content=content)
+
+
+def _gen_code_interpreter(node: Node, project: Project, node_map: dict[str, Node]) -> CompiledFile:
+    """AgentCore managed Python sandbox — no infrastructure required."""
+    nid = node.id
+    timeout = node.config.get("timeout_seconds", 30)
+    input_key = _first_input_key(node, project.edges)
+    output_key = _state_key(nid, "result")
+    error_key = _state_key(nid, "error")
+
+    content = f'''\
+from bedrock_agentcore.tools import CodeInterpreterClient
+
+from ..state import AgentState
+
+_code_interpreter = CodeInterpreterClient()
+
+
+async def node_{nid}(state: AgentState) -> dict:
+    """Executes Python code in AgentCore managed sandbox (timeout: {timeout}s)."""
+    payload = state.get("{input_key}")
+    code = payload.get("code", "") if isinstance(payload, dict) else str(payload or "")
+
+    response = await _code_interpreter.invoke_async(
+        code=code,
+        timeout_seconds={timeout},
+    )
+
+    return {{
+        "{output_key}": response.get("output"),
+        "{error_key}": response.get("error"),
+    }}
+'''
+    return CompiledFile(path=f"agent/nodes/{nid}.py", content=content)
+
+
+def _gen_browser_tool(node: Node, project: Project, node_map: dict[str, Node]) -> CompiledFile:
+    """AgentCore managed headless browser — no Playwright/Puppeteer infra required."""
+    nid = node.id
+    input_key = _first_input_key(node, project.edges)
+    output_key = _state_key(nid, "result")
+
+    content = f'''\
+from bedrock_agentcore.tools import BrowserClient
+
+from ..state import AgentState
+
+_browser = BrowserClient()
+
+
+async def node_{nid}(state: AgentState) -> dict:
+    """Navigates and extracts content via AgentCore managed browser."""
+    payload = state.get("{input_key}")
+    if isinstance(payload, dict):
+        url = payload.get("url", "")
+        action = payload.get("action", "navigate")
+        extra = {{k: v for k, v in payload.items() if k not in ("url", "action")}}
+    else:
+        url = str(payload or "")
+        action = "navigate"
+        extra = {{}}
+
+    response = await _browser.invoke_async(action=action, url=url, **extra)
+    return {{"{output_key}": response.get("result", {{}})}}
 '''
     return CompiledFile(path=f"agent/nodes/{nid}.py", content=content)
 
