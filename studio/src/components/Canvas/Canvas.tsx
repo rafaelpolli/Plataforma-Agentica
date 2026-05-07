@@ -11,6 +11,7 @@ import {
   ReactFlowProvider,
 } from '@xyflow/react';
 import { CustomNode } from './CustomNode';
+import { GlobalErrorsBanner } from './GlobalErrorsBanner';
 import { useGraphStore, type AppFlowNode } from '../../store/graphStore';
 import { NODE_CATALOG, DATA_TYPE_COMPATIBLE } from '../../nodes/catalog';
 import type { AgentNode, NodeType } from '../../types/graph';
@@ -81,7 +82,8 @@ function CanvasInner() {
   );
 
   return (
-    <div className="flex-1 h-full bg-gray-950">
+    <div className="flex-1 h-full bg-gray-950 relative">
+      <GlobalErrorsBanner />
       <ReactFlow
         nodes={nodes}
         edges={edges}

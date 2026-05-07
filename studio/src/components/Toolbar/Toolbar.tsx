@@ -1,8 +1,25 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useGraphStore } from '../../store/graphStore';
-import { validateGraph, generateZip } from '../../api/engine';
+import { validateGraph, generateZip, checkEngineHealth } from '../../api/engine';
 import { importAgentZip, ImportError } from '../../api/import';
 import { HelpPanel } from '../Help/HelpPanel';
+
+type EngineHealth = 'unknown' | 'ok' | 'down';
+
+function HealthDot({ status, lastError }: { status: EngineHealth; lastError: string }) {
+  const map: Record<EngineHealth, { cls: string; label: string; title: string }> = {
+    unknown: { cls: 'bg-gray-500', label: 'Engine ?', title: 'Checking engine…' },
+    ok:      { cls: 'bg-green-500', label: 'Engine', title: 'Engine reachable at /api/health' },
+    down:    { cls: 'bg-red-500',   label: 'Engine offline', title: lastError || 'Engine /api/health failed' },
+  };
+  const { cls, label, title } = map[status];
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-gray-400" title={title}>
+      <span className={`w-2 h-2 rounded-full ${cls}`} />
+      <span>{label}</span>
+    </div>
+  );
+}
 
 type Status = 'idle' | 'validating' | 'valid' | 'invalid' | 'generating' | 'error';
 
@@ -33,7 +50,27 @@ export function Toolbar() {
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
+  const [engineHealth, setEngineHealth] = useState<EngineHealth>('unknown');
+  const [healthError, setHealthError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let stopped = false;
+    const ctl = new AbortController();
+    const tick = async () => {
+      const result = await checkEngineHealth(ctl.signal);
+      if (stopped) return;
+      setEngineHealth(result.ok ? 'ok' : 'down');
+      setHealthError(result.error ?? '');
+    };
+    tick();
+    const id = window.setInterval(tick, 15000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+      ctl.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -124,6 +161,11 @@ export function Toolbar() {
       />
 
       <div className="flex-1" />
+
+      {/* Engine health */}
+      <HealthDot status={engineHealth} lastError={healthError} />
+
+      <div className="w-px h-6 bg-gray-700" />
 
       {/* Status */}
       <StatusBadge status={status} errorCount={validationErrors.length} />

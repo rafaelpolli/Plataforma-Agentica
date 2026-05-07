@@ -1,7 +1,78 @@
-import { useCallback, Suspense, lazy } from 'react';
+import { useCallback, useMemo, Suspense, lazy } from 'react';
 import { useGraphStore } from '../../store/graphStore';
-import { NODE_CATALOG, type FieldDef } from '../../nodes/catalog';
-import type { AgentNode } from '../../types/graph';
+import { NODE_CATALOG, type FieldDef, type NodeRefFilter } from '../../nodes/catalog';
+import type { AgentNode, NodeType } from '../../types/graph';
+
+const TOOL_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
+  'tool_custom', 'tool_athena', 'tool_s3', 'tool_http', 'tool_bedrock',
+]);
+
+function nodeMatchesFilter(node: AgentNode, currentNodeId: string, filter: NodeRefFilter): boolean {
+  if (node.id === currentNodeId) return false;
+  if (filter === 'tool') return TOOL_NODE_TYPES.has(node.type);
+  if (filter === 'agent') return node.type === 'agent';
+  if (filter === 'worker_agent') return node.type === 'agent' || node.type === 'multi_agent_coordinator';
+  return false;
+}
+
+interface NodeRefListFieldProps {
+  fieldDef: FieldDef;
+  currentNodeId: string;
+  value: unknown;
+  onChange: (value: string[]) => void;
+}
+
+function NodeRefListField({ fieldDef, currentNodeId, value, onChange }: NodeRefListFieldProps) {
+  const allNodes = useGraphStore((s) => s.nodes);
+  const filter = fieldDef.nodeFilter ?? 'tool';
+  const candidates = useMemo(
+    () => allNodes
+      .map((fn) => fn.data.node)
+      .filter((n) => nodeMatchesFilter(n, currentNodeId, filter)),
+    [allNodes, currentNodeId, filter],
+  );
+  const selected = Array.isArray(value) ? (value as string[]) : [];
+
+  const toggle = (id: string) => {
+    if (selected.includes(id)) {
+      onChange(selected.filter((x) => x !== id));
+    } else {
+      onChange([...selected, id]);
+    }
+  };
+
+  if (candidates.length === 0) {
+    return (
+      <div className="text-xs text-gray-500 italic px-2 py-1.5 bg-gray-800 rounded border border-gray-700">
+        No matching nodes on the canvas. Add a {filter === 'tool' ? 'tool' : 'agent'} node first.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1 max-h-48 overflow-y-auto bg-gray-800 border border-gray-600 rounded-lg p-2">
+      {candidates.map((n) => {
+        const def = NODE_CATALOG[n.type];
+        const checked = selected.includes(n.id);
+        return (
+          <label key={n.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-700 rounded px-1.5 py-1">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-blue-500"
+              checked={checked}
+              onChange={() => toggle(n.id)}
+            />
+            <span className="text-base leading-none">{def.icon}</span>
+            <div className="flex-1 overflow-hidden">
+              <div className="text-xs text-white truncate">{n.label}</div>
+              <div className="text-xs text-gray-500 truncate font-mono">{n.id}</div>
+            </div>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 const MonacoEditor = lazy(() => import('@monaco-editor/react'));
 
@@ -34,9 +105,10 @@ interface FieldProps {
   fieldDef: FieldDef;
   value: unknown;
   onChange: (value: unknown) => void;
+  currentNodeId: string;
 }
 
-function Field({ fieldDef, value, onChange }: FieldProps) {
+function Field({ fieldDef, value, onChange, currentNodeId }: FieldProps) {
   const strVal = value == null ? '' : String(value);
   const numVal = value == null ? '' : Number(value);
   const boolVal = Boolean(value);
@@ -119,6 +191,13 @@ function Field({ fieldDef, value, onChange }: FieldProps) {
           step={fieldDef.step ?? 1}
           onChange={(e) => onChange(Number(e.target.value))}
         />
+      ) : fieldDef.type === 'node_ref_list' ? (
+        <NodeRefListField
+          fieldDef={fieldDef}
+          currentNodeId={currentNodeId}
+          value={value}
+          onChange={onChange}
+        />
       ) : null}
 
       {fieldDef.hint && (
@@ -164,6 +243,7 @@ function NodeConfigForm({ node, onConfigChange, onLabelChange }: NodeConfigFormP
           fieldDef={fieldDef}
           value={getNestedValue(node.config, fieldDef.key)}
           onChange={(v) => handleFieldChange(fieldDef.key, v)}
+          currentNodeId={node.id}
         />
       ))}
     </div>

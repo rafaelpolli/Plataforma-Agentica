@@ -9,7 +9,9 @@ export type NodeCategory =
   | 'Ingestion Pipelines'
   | 'Flow Control';
 
-export type FieldType = 'string' | 'textarea' | 'code' | 'enum' | 'boolean' | 'number' | 'secret_ref';
+export type FieldType = 'string' | 'textarea' | 'code' | 'enum' | 'boolean' | 'number' | 'secret_ref' | 'node_ref_list';
+
+export type NodeRefFilter = 'tool' | 'agent' | 'worker_agent';
 
 export interface FieldDef {
   key: string;
@@ -23,6 +25,8 @@ export interface FieldDef {
   step?: number;
   hint?: string;
   language?: string;
+  /** For node_ref_list: which kinds of canvas nodes are selectable. */
+  nodeFilter?: NodeRefFilter;
 }
 
 export interface NodeDefinition {
@@ -115,6 +119,7 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
       max_tokens: 4096,
       streaming: false,
       tools: [],
+      memory: { enabled: false, namespace: 'default', top_k: 5, ttl_seconds: 3600 },
     },
     configSchema: [
       { key: 'model_id', label: 'Bedrock model ID', type: 'string', placeholder: 'anthropic.claude-3-5-sonnet-20241022-v2:0' },
@@ -125,9 +130,11 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
       { key: 'streaming', label: 'Streaming', type: 'boolean' },
       { key: 'guardrails.guardrail_id', label: 'Guardrail ID', type: 'string' },
       { key: 'guardrails.guardrail_version', label: 'Guardrail version', type: 'string' },
-      { key: 'memory.enabled', label: 'Memory enabled', type: 'boolean' },
-      { key: 'memory.backend', label: 'Memory backend', type: 'enum', options: ['dynamodb', 'in_memory'] },
-      { key: 'memory.ttl_seconds', label: 'Memory TTL (seconds)', type: 'number', min: 60 },
+      { key: 'memory.enabled', label: 'AgentCore Memory enabled', type: 'boolean', hint: 'Per-turn create_event + retrieve_memories. Provisions aws_bedrockagentcore_memory with semantic + summary + user_preference strategies.' },
+      { key: 'memory.namespace', label: 'Memory namespace', type: 'string', placeholder: 'default', hint: 'Namespace for retrieve_memories. Supports placeholders like /actor/{actorId} or /session/{sessionId}.' },
+      { key: 'memory.top_k', label: 'Memory recall top_k', type: 'number', min: 1, max: 50, hint: 'Number of past memories injected into the prompt before each turn.' },
+      { key: 'memory.ttl_seconds', label: 'Memory event expiry (seconds)', type: 'number', min: 60, hint: 'Maps to event_expiry_duration on the AgentCore Memory resource.' },
+      { key: 'tools', label: 'Attached tools', type: 'node_ref_list', nodeFilter: 'tool', hint: 'Pick tool nodes from the canvas. Selected tools are wired into the ReAct agent at compile time.' },
     ],
     defaultPorts: {
       inputs: [p('message', 'User message', 'any', true), p('context', 'Context', 'any')],
@@ -148,6 +155,7 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
       { key: 'system_prompt', label: 'System prompt', type: 'textarea', required: true },
       { key: 'routing_strategy', label: 'Routing strategy', type: 'enum', options: ['llm_based', 'rule_based'] },
       { key: 'max_iterations', label: 'Max iterations', type: 'number', min: 1, max: 100 },
+      { key: 'workers', label: 'Worker agents', type: 'node_ref_list', nodeFilter: 'worker_agent', required: true, hint: 'Pick agent nodes from the canvas to act as workers under this supervisor.' },
     ],
     defaultPorts: {
       inputs: [p('task', 'Task', 'any', true)],
@@ -191,6 +199,7 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
       { key: 'lambda_arn', label: 'Lambda ARN', type: 'string', placeholder: 'arn:aws:lambda:...' },
       { key: 'timeout_seconds', label: 'Timeout (seconds)', type: 'number', min: 1, max: 900 },
       { key: 'memory_mb', label: 'Memory (MB)', type: 'number', min: 128, max: 10240 },
+      { key: 'input_schema', label: 'Input JSON Schema (optional)', type: 'code', language: 'json', placeholder: '{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}', hint: 'JSON Schema describing the tool input. Compiler converts properties into typed Python parameters.' },
     ],
     defaultPorts: {
       inputs: [p('input', 'Input', 'json', true)],
@@ -259,6 +268,7 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
       { key: 'auth.secret_ref', label: 'Secret reference', type: 'secret_ref', placeholder: 'secret://my-api-key' },
       { key: 'auth.oauth2.token_url', label: 'OAuth2 token URL', type: 'string' },
       { key: 'auth.oauth2.scope', label: 'OAuth2 scope', type: 'string' },
+      { key: 'headers', label: 'Static headers (JSON)', type: 'code', language: 'json', placeholder: '{"Accept": "application/json"}', hint: 'Object merged into every request. Auth headers are added automatically on top of these.' },
       { key: 'timeout_seconds', label: 'Timeout (seconds)', type: 'number', min: 1, max: 900 },
     ],
     defaultPorts: {
@@ -444,9 +454,11 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
     category: 'Knowledge Base / RAG',
     icon: '🔎',
     categoryColor: 'border-green-500',
-    defaultConfig: { top_k: 5 },
+    defaultConfig: { top_k: 5, search_type: 'similarity' },
     configSchema: [
-      { key: 'top_k', label: 'Top K results', type: 'number', min: 1, max: 100 },
+      { key: 'top_k', label: 'Top K results', type: 'number', required: true, min: 1, max: 100 },
+      { key: 'search_type', label: 'Search type', type: 'enum', required: true, options: ['similarity', 'mmr', 'similarity_score_threshold'], hint: 'Vector store query mode. similarity = pure cosine; mmr = max-marginal-relevance dedupe.' },
+      { key: 'score_threshold', label: 'Score threshold (optional)', type: 'number', min: 0, max: 1, step: 0.01, hint: 'Drop docs below this similarity score. Required when search_type=similarity_score_threshold.' },
     ],
     defaultPorts: {
       inputs: [p('query', 'Query', 'any', true), p('retriever', 'Retriever', 'retriever', true)],
@@ -549,8 +561,9 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
     category: 'Flow Control',
     icon: '💾',
     categoryColor: 'border-pink-500',
-    defaultConfig: { key_expression: '', ttl_seconds: 3600, table_name: '' },
+    defaultConfig: { backend: 'dynamodb', key_expression: '', ttl_seconds: 3600, table_name: '' },
     configSchema: [
+      { key: 'backend', label: 'Backend', type: 'enum', required: true, options: ['dynamodb'], hint: 'v1 supports DynamoDB only. ElastiCache deferred.' },
       { key: 'key_expression', label: 'Cache key expression (JMESPath)', type: 'string', required: true },
       { key: 'ttl_seconds', label: 'TTL (seconds)', type: 'number', min: 60 },
       { key: 'table_name', label: 'DynamoDB table name', type: 'string' },
@@ -568,10 +581,11 @@ export const NODE_CATALOG: Record<NodeType, NodeDefinition> = {
     category: 'Flow Control',
     icon: '📝',
     categoryColor: 'border-pink-500',
-    defaultConfig: { level: 'INFO', message_template: '{{payload}}' },
+    defaultConfig: { level: 'INFO', message_template: '{{payload}}', include_payload: false },
     configSchema: [
       { key: 'level', label: 'Log level', type: 'enum', options: ['DEBUG', 'INFO', 'WARNING', 'ERROR'] },
       { key: 'message_template', label: 'Message template', type: 'string' },
+      { key: 'include_payload', label: 'Include payload in log', type: 'boolean', hint: 'When enabled, the full payload is embedded in the structured CloudWatch log entry.' },
     ],
     defaultPorts: {
       inputs: [p('payload', 'Payload', 'any', true)],

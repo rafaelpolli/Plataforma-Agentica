@@ -2,6 +2,23 @@ import type { Project, ValidationResult } from '../types/graph';
 
 const API_BASE = '/api';
 
+export interface HealthResult {
+  ok: boolean;
+  timestamp?: string;
+  error?: string;
+}
+
+export async function checkEngineHealth(signal?: AbortSignal): Promise<HealthResult> {
+  try {
+    const res = await fetch(`${API_BASE}/health`, { signal });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const body = (await res.json()) as { status?: string; timestamp?: string };
+    return { ok: body.status === 'ok', timestamp: body.timestamp };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export async function validateGraph(project: Project): Promise<ValidationResult> {
   const res = await fetch(`${API_BASE}/validate`, {
     method: 'POST',
