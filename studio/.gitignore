@@ -1,10 +1,11 @@
 # Build output
 dist/
 
-# Local env overrides
+# Local env overrides (.env.production IS committed — public engine URL)
 .env
 .env.local
 .env.*.local
+!.env.production
 
 # Vite cache (frequently churns)
 node_modules/.vite/

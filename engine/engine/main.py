@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import os
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException
@@ -22,9 +23,23 @@ app = FastAPI(
     description="Code generation engine that converts visual agent graphs into deployable ZIPs.",
 )
 
+
+def _cors_origins() -> list[str]:
+    """Comma-separated list of allowed origins. Defaults to local Vite ports.
+
+    Set CORS_ORIGINS at deploy time, e.g.:
+        CORS_ORIGINS=https://agents-studio.pages.dev,https://studio.example.com
+    Use '*' to allow any origin (do not combine with credentials).
+    """
+    raw = os.environ.get("CORS_ORIGINS", "").strip()
+    if not raw:
+        return ["http://localhost:5173", "http://localhost:4173"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173"],
+    allow_origins=_cors_origins(),
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
