@@ -60,11 +60,12 @@ export function HelpPanel({ onClose }: Props) {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+                className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors border-l-2 ${
                   tab === t.id
-                    ? 'bg-blue-600/20 text-blue-300 border-l-2 border-blue-400'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200 border-l-2 border-transparent'
+                    ? 'border-[#FF6200] text-[#FF6200]'
+                    : 'border-transparent text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                 }`}
+                style={tab === t.id ? { background: 'rgba(255,98,0,0.10)' } : {}}
               >
                 <span>{t.icon}</span>
                 <span>{t.label}</span>
@@ -102,7 +103,7 @@ function H1({ children }: { children: React.ReactNode }) {
   return <h1 className="text-2xl font-bold text-white mb-4">{children}</h1>;
 }
 function H2({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-lg font-semibold text-blue-300 mt-6 mb-2">{children}</h2>;
+  return <h2 className="text-lg font-semibold mt-6 mb-2" style={{ color: '#FF6200' }}>{children}</h2>;
 }
 function P({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-gray-300 leading-relaxed mb-3">{children}</p>;
@@ -126,7 +127,7 @@ function Steps({ items }: { items: React.ReactNode[] }) {
     <ol className="space-y-2 mb-3 list-none pl-0">
       {items.map((item, i) => (
         <li key={i} className="flex gap-3">
-          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
+          <span className="flex-shrink-0 w-6 h-6 rounded-full text-white text-xs font-bold flex items-center justify-center" style={{ background: '#FF6200' }}>
             {i + 1}
           </span>
           <div className="text-sm text-gray-300 pt-0.5">{item}</div>

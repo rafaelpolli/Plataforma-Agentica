@@ -82,7 +82,7 @@ function CanvasInner() {
   );
 
   return (
-    <div className="flex-1 h-full bg-gray-950 relative">
+    <div className="flex-1 h-full relative" style={{ background: '#FAFAF8' }}>
       <GlobalErrorsBanner />
       <ReactFlow
         nodes={nodes}
@@ -101,17 +101,17 @@ function CanvasInner() {
         minZoom={0.2}
         maxZoom={2}
         defaultEdgeOptions={{
-          style: { stroke: '#4b5563', strokeWidth: 2 },
+          style: { stroke: '#9ca3af', strokeWidth: 2 },
           animated: false,
         }}
       >
-        <Background variant={BackgroundVariant.Dots} color="#1f2937" gap={20} size={1} />
+        <Background variant={BackgroundVariant.Dots} color="rgba(0,0,0,0.10)" gap={20} size={1} />
         <Controls position="bottom-left" />
         <MiniMap
           position="bottom-right"
           nodeColor={(n) => {
             const node = (n as AppFlowNode).data?.node;
-            if (!node) return '#374151';
+            if (!node) return '#d1d5db';
             const def = NODE_CATALOG[node.type];
             const colorMap: Record<string, string> = {
               'border-blue-500': '#3b82f6',
@@ -122,9 +122,9 @@ function CanvasInner() {
               'border-teal-500': '#14b8a6',
               'border-pink-500': '#ec4899',
             };
-            return colorMap[def.categoryColor] ?? '#374151';
+            return colorMap[def.categoryColor] ?? '#d1d5db';
           }}
-          maskColor="rgba(3, 7, 18, 0.8)"
+          maskColor="rgba(250,250,248,0.75)"
         />
       </ReactFlow>
     </div>

@@ -32,7 +32,7 @@ function CustomNodeInner({ data, selected, id }: NodeProps<AppFlowNode>) {
   const borderColor = hasErrors
     ? 'border-red-500'
     : selected
-    ? 'border-blue-400'
+    ? 'border-[#FF6200]'
     : def.categoryColor;
 
   const onDelete = useCallback(
@@ -56,8 +56,8 @@ function CustomNodeInner({ data, selected, id }: NodeProps<AppFlowNode>) {
   return (
     <>
       <div
-        className={`relative bg-gray-800 border-2 rounded-xl shadow-xl select-none ${borderColor}`}
-        style={{ minWidth: 220 }}
+        className={`relative bg-white border-2 rounded-xl select-none ${borderColor}`}
+        style={{ minWidth: 220, boxShadow: '0 2px 10px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)' }}
       >
         {/* Input handles */}
         {node.ports.inputs.map((port, i) => (
@@ -67,7 +67,7 @@ function CustomNodeInner({ data, selected, id }: NodeProps<AppFlowNode>) {
             type="target"
             position={Position.Left}
             style={{ top: portTop(i), background: 'transparent' }}
-            className={`!border-2 !border-gray-900 !w-3 !h-3 ${PORT_COLORS[port.data_type] ?? 'bg-gray-400'}`}
+            className={`!border-2 !border-white !w-3 !h-3 ${PORT_COLORS[port.data_type] ?? 'bg-gray-400'}`}
           />
         ))}
 
@@ -79,25 +79,25 @@ function CustomNodeInner({ data, selected, id }: NodeProps<AppFlowNode>) {
             type="source"
             position={Position.Right}
             style={{ top: portTop(i), background: 'transparent' }}
-            className={`!border-2 !border-gray-900 !w-3 !h-3 ${PORT_COLORS[port.data_type] ?? 'bg-gray-400'}`}
+            className={`!border-2 !border-white !w-3 !h-3 ${PORT_COLORS[port.data_type] ?? 'bg-gray-400'}`}
           />
         ))}
 
         {/* Header */}
         <div
-          className="flex items-center gap-2 px-3 border-b border-gray-700"
-          style={{ height: HEADER_H }}
+          className="flex items-center gap-2 px-3"
+          style={{ height: HEADER_H, borderBottom: '1px solid rgba(0,0,0,0.07)' }}
         >
           <span className="text-xl leading-none">{def.icon}</span>
           <div className="flex-1 overflow-hidden">
-            <div className="text-white text-sm font-semibold truncate leading-tight">{node.label}</div>
-            <div className="text-gray-400 text-xs truncate">{def.label}</div>
+            <div className="text-sm font-semibold truncate leading-tight" style={{ color: '#0f0f0f' }}>{node.label}</div>
+            <div className="text-gray-500 text-xs truncate">{def.label}</div>
           </div>
 
           {/* Help button — always visible */}
           <button
             onClick={onHelp}
-            className="flex-shrink-0 w-5 h-5 rounded-full border border-gray-600 text-gray-500 hover:text-blue-400 hover:border-blue-400 text-xs font-bold flex items-center justify-center transition-colors"
+            className="flex-shrink-0 w-5 h-5 rounded-full border border-gray-600 text-gray-500 hover:text-[#FF6200] hover:border-[#FF6200] text-xs font-bold flex items-center justify-center transition-colors"
             title="Show help"
           >
             ?
@@ -121,9 +121,9 @@ function CustomNodeInner({ data, selected, id }: NodeProps<AppFlowNode>) {
             {node.ports.inputs.map((port) => (
               <div key={port.id} className="flex items-center gap-1.5" style={{ height: PORT_ROW_H }}>
                 <PortDot port={port} />
-                <span className="text-xs text-gray-300 truncate">
+                <span className="text-xs text-gray-600 truncate">
                   {port.name}
-                  {port.required && <span className="text-red-400 ml-0.5">*</span>}
+                  {port.required && <span className="text-red-500 ml-0.5">*</span>}
                 </span>
               </div>
             ))}
@@ -133,7 +133,7 @@ function CustomNodeInner({ data, selected, id }: NodeProps<AppFlowNode>) {
           <div className="flex flex-col gap-0.5 flex-1 items-end">
             {node.ports.outputs.map((port) => (
               <div key={port.id} className="flex items-center gap-1.5 justify-end" style={{ height: PORT_ROW_H }}>
-                <span className="text-xs text-gray-300 truncate">{port.name}</span>
+                <span className="text-xs text-gray-600 truncate">{port.name}</span>
                 <PortDot port={port} />
               </div>
             ))}
@@ -144,7 +144,7 @@ function CustomNodeInner({ data, selected, id }: NodeProps<AppFlowNode>) {
         {hasErrors && (
           <div className="px-3 pb-2">
             {validationErrors.map((e, i) => (
-              <div key={i} className="text-xs text-red-400 truncate">
+              <div key={i} className="text-xs text-red-500 truncate">
                 ⚠ {e.message}
               </div>
             ))}

@@ -5,7 +5,7 @@ import { ConfigPanel } from './components/ConfigPanel/ConfigPanel';
 
 export default function App() {
   return (
-    <div className="flex flex-col h-full bg-gray-950 text-white">
+    <div className="flex flex-col h-full" style={{ background: '#FAFAF8', color: '#0f0f0f' }}>
       <Toolbar />
       <div className="flex flex-1 overflow-hidden">
         <NodePanel />

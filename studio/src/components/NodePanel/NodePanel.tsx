@@ -21,13 +21,16 @@ function NodeCard({ nodeType }: NodeCardProps) {
     <div
       draggable
       onDragStart={onDragStart}
-      className="flex items-start gap-2 px-2 py-2 rounded-lg cursor-grab hover:bg-gray-700 active:cursor-grabbing transition-colors group"
+      className="flex items-start gap-2 px-2 py-2 rounded-lg cursor-grab active:cursor-grabbing transition-colors group"
+      style={{ '--hover-bg': '#FFF8F4' } as React.CSSProperties}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#FFF8F4'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = ''; }}
       title={def.description}
     >
       <span className="text-base leading-tight mt-0.5 flex-shrink-0">{def.icon}</span>
       <div className="overflow-hidden">
-        <div className="text-sm text-white font-medium leading-tight truncate">{def.label}</div>
-        <div className="text-xs text-gray-400 truncate">{def.description}</div>
+        <div className="text-sm font-medium leading-tight truncate" style={{ color: '#0f0f0f' }}>{def.label}</div>
+        <div className="text-xs text-gray-500 truncate">{def.description}</div>
       </div>
     </div>
   );
@@ -55,10 +58,10 @@ function CategorySection({ category, search }: CategorySectionProps) {
     <div className="mb-1">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-300 transition-colors"
+        className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-700 transition-colors"
       >
         <span>{category}</span>
-        <span className="text-gray-500">{open ? '▾' : '▸'}</span>
+        <span className="text-gray-400">{open ? '▾' : '▸'}</span>
       </button>
       {open && (
         <div className="space-y-0.5">
@@ -75,16 +78,18 @@ export function NodePanel() {
   const [search, setSearch] = useState('');
 
   return (
-    <aside className="w-60 flex-shrink-0 bg-gray-900 border-r border-gray-700 flex flex-col h-full">
+    <aside className="w-60 flex-shrink-0 bg-white flex flex-col h-full" style={{ borderRight: '1px solid rgba(0,0,0,0.07)' }}>
       {/* Header */}
-      <div className="px-3 py-3 border-b border-gray-700">
-        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Nodes</div>
+      <div className="px-3 py-3" style={{ borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Nodes</div>
         <input
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search nodes..."
-          className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+          placeholder="Buscar nodes..."
+          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 placeholder-gray-400 focus:outline-none transition-colors"
+          onFocus={(e) => { e.target.style.borderColor = '#FF6200'; }}
+          onBlur={(e) => { e.target.style.borderColor = ''; }}
         />
       </div>
 
@@ -96,8 +101,8 @@ export function NodePanel() {
       </div>
 
       {/* Footer hint */}
-      <div className="px-3 py-2 border-t border-gray-700 text-xs text-gray-500">
-        Drag nodes onto the canvas
+      <div className="px-3 py-2 text-xs text-gray-400" style={{ borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+        Arraste nodes para o canvas
       </div>
     </aside>
   );

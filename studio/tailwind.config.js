@@ -2,7 +2,15 @@
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        brand: '#FF6200',
+      },
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', 'monospace'],
+      },
+    },
   },
   plugins: [],
   safelist: [
