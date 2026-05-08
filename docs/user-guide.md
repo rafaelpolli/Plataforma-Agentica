@@ -42,26 +42,150 @@ Studio at `http://localhost:5173`.
 
 ---
 
+## Hosting the Platform (free)
+
+Two-tier free deploy: Studio on Cloudflare Workers (Assets), engine on
+Hugging Face Spaces (Docker SDK). Generated agents target the customer's
+own AWS account separately — billing for Bedrock/AgentCore is the
+customer's, not the platform host's.
+
+### A. Studio → Cloudflare Workers (Assets)
+
+The Studio repo is wired for Cloudflare Workers Assets via
+[studio/wrangler.toml](../studio/wrangler.toml):
+
+```toml
+name = "agents-studio"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+```
+
+**Project setup (one-time):**
+
+1. Cloudflare dashboard → **Workers & Pages** → **Create**.
+2. **Connect to Git** → pick your fork.
+3. Build configuration:
+
+| Field | Value |
+|---|---|
+| Root directory | `studio` |
+| Build command | `npm install && npm run build` |
+| Deploy command | `npx wrangler deploy` |
+
+4. **Save and Deploy.** Studio publishes to
+   `https://agents-studio.<account>.workers.dev`.
+
+**Engine URL** is baked at build time via Vite. The repo ships
+[studio/.env.production](../studio/.env.production) with
+`VITE_API_BASE=https://<your-hf-user>-agents-engine.hf.space`. Edit it
+to your HF Space URL before pushing, or fork and override.
+
+> **Why a committed `.env.production` and not a build-time variable?**
+> Cloudflare Workers Assets blocks runtime variables on assets-only
+> deploys ("Variables cannot be added to a Worker that only has static
+> assets"). Vite reads `.env.production` during `vite build` and inlines
+> the value into the JS bundle. The engine URL is public anyway — no
+> secret to leak.
+
+**Custom domain (free, optional):** Workers project → Settings → Custom
+domains. Requires DNS on Cloudflare.
+
+### B. Engine → Hugging Face Spaces (Docker SDK)
+
+The repo ships [engine/Dockerfile](../engine/Dockerfile) and
+[engine/README.md](../engine/README.md) with the YAML frontmatter HF
+Spaces requires (`sdk: docker`, `app_port: 7860`).
+
+**Space setup (one-time):**
+
+1. https://huggingface.co/new-space → **Owner**, **Space name**
+   `agents-engine`, **License** MIT, **SDK: Docker → Blank**, **Public**.
+2. Generate a write token at https://huggingface.co/settings/tokens.
+3. Add the Space as a git remote on the monorepo and force-push the
+   `engine/` subtree on first push (the Space already has a template
+   commit):
+
+   ```powershell
+   cd "C:\Plataforma Agentica"
+   git remote add hf https://USER:TOKEN@huggingface.co/spaces/USER/agents-engine
+
+   # First push — overwrite the template commit
+   $sha = git subtree split --prefix=engine HEAD
+   git push hf "$sha`:main" --force
+   ```
+
+   Bash equivalent:
+
+   ```bash
+   git push hf $(git subtree split --prefix=engine HEAD):main --force
+   ```
+
+4. Watch the build on the Space page. ~3–5 min for first build (uv
+   install). Badge turns **Running**.
+5. Probe: `curl https://USER-agents-engine.hf.space/health` →
+   `{"status":"ok",...}`.
+
+**Configure CORS so Cloudflare-hosted Studio can call the engine:**
+Space → **Settings** → **Variables and secrets** → add a variable:
+
+| Name | Value |
+|---|---|
+| `CORS_ORIGINS` | `https://agents-studio.<your-account>.workers.dev` (comma-separate to allow more origins) |
+
+The engine reads `CORS_ORIGINS` at startup; falls back to local Vite
+ports when unset. Save → Space restarts (~30s).
+
+**Subsequent updates** (no force flag, fast-forwards):
+
+```powershell
+$sha = git subtree split --prefix=engine HEAD
+git push hf "$sha`:main"
+```
+
+### C. Wire Studio → Engine
+
+The committed `.env.production` already points to the standard HF Space
+URL. After both deploys finish, open the Studio URL — the **engine health
+dot** in the toolbar turns green within 15s. If red, check:
+
+- HF Space is **Running** (not sleeping — first wake takes ~10s)
+- `CORS_ORIGINS` includes the **exact** Cloudflare URL (no trailing slash)
+- `VITE_API_BASE` value in `.env.production` matches the HF Space URL
+
+### D. Caveats
+
+- HF free tier sleeps after ~48 h idle; first request after sleep is slow.
+- HF public Space = public source. Pro plan ($9/mo) for private Spaces.
+- Cloudflare Workers Assets free tier: 100k requests/day, generous bandwidth.
+- Generated agents themselves run on the **customer's** AWS account; that
+  bill is separate and not on the free tier (Bedrock + AgentCore are paid).
+
+---
+
 ## Studio Overview
 
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│  Toolbar  [project name]  [⬆ Import ZIP]  [✓ Validate]  [⬇ Generate ZIP]  [?]  │
-├────────────┬──────────────────────────────────┬────────────────────┤
-│            │                                  │                    │
-│   Node     │             Canvas               │   Config Panel     │
-│   Panel    │     (drag-and-drop area)         │   (selected node)  │
-│            │                                  │                    │
-└────────────┴──────────────────────────────────┴────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  Toolbar  [name]  ●Engine  [⬆Import] [🔀Git] [✓Validate] [⬇Generate] [?]      │
+├────────────┬────────────────────────────────────────┬────────────────────────┤
+│            │                                        │                        │
+│   Node     │   Canvas (red banner: graph errors)    │   Config Panel         │
+│   Panel    │   (drag-and-drop area)                 │   (selected node)      │
+│            │                                        │                        │
+└────────────┴────────────────────────────────────────┴────────────────────────┘
 ```
 
 | Area | Purpose |
 |---|---|
 | **Node Panel** (left) | Catalog of node types grouped by category. Drag onto canvas. |
-| **Canvas** (center) | Compose the agent by connecting nodes with edges. |
-| **Config Panel** (right) | Edit the selected node's parameters. |
-| **Toolbar** (top) | Project name, Import ZIP, Validate, Generate ZIP, Help. |
+| **Canvas** (center) | Compose the agent by connecting nodes with edges. Top-banner surfaces graph-level validation errors. |
+| **Config Panel** (right) | Edit the selected node's parameters. Reads from current canvas for `node_ref_list` pickers (e.g. agent's tools). |
+| **Toolbar** (top) | Project name, engine health dot, Import ZIP, **🔀 Git**, Validate, Generate ZIP, Help. |
 | **Help Panel** (`?`) | Modal docs: Quickstart, Building Workflows, Node Reference, Examples, Deploy, Troubleshooting. |
+| **Engine health dot** | Green = engine reachable on `/api/health`; red = engine offline (Validate/Generate/Git/Pull will fail). Polls every 15s. |
 
 Keyboard shortcuts:
 - `?` — open Help (when not typing in a field)
@@ -125,6 +249,40 @@ Click **⬆ Import ZIP** and select a previously generated bundle. The Studio
 unpacks `project.json` (client-side via JSZip), validates the schema, and
 restores nodes, edges, configs, and project name. Importing replaces the
 current canvas after a confirmation prompt.
+
+### Step 7 — Push the generated repo to GitHub or GitLab
+
+Click **🔀 Git** in the toolbar. Modal has provider switcher (GitHub /
+GitLab) and Push / Pull tabs. Tokens are persisted in browser
+`localStorage` only; the engine forwards them once per request and never
+stores them.
+
+**Create a Personal Access Token first:**
+
+| Provider | Token type | Scopes |
+|---|---|---|
+| **GitHub** | Settings → Developer settings → **Tokens (fine-grained)** | `Contents: read & write` on the target repo |
+| **GitLab** | User settings → Access Tokens | `api` |
+
+**Push tab** — runs the full code-gen pipeline server-side, then commits
+every generated file (Python, Terraform, tests, Docker, `.env.example`,
+`project.json`) in **one atomic commit** to the chosen branch.
+
+| Field | Value |
+|---|---|
+| Repo | `owner/name` (GitHub) or `group/project` / nested path (GitLab) |
+| Branch | Auto-created off the default branch if missing |
+| Commit message | Free text |
+| Base URL (GitLab only) | `https://gitlab.com` (default) or self-hosted URL |
+
+**Pull tab** — reads `project.json` (or any path) from the repo and
+hydrates the canvas. Use to round-trip-edit a previously pushed repo
+without downloading the ZIP. Confirms before overwriting the canvas.
+
+| Field | Value |
+|---|---|
+| Ref | Branch, tag, or commit SHA. Default `main`. |
+| Path | Default `project.json`. |
 
 ---
 
@@ -519,3 +677,9 @@ edge node reference exists. Cross-major migrations live in
 | Bedrock cross-region call fails | Wrong region | Set `inference_profile_arn` (overrides `model_id`) |
 | HITL workflow won't resume | DynamoDB checkpointer table missing | Confirm `dynamodb.tf` applied and IAM has `dynamodb:*` |
 | Studio shows red Error in toolbar | Engine unreachable | Confirm engine running on port 8000; check `studio/src/api/engine.ts` base URL |
+| Engine health dot stays red on the deployed Studio | CORS, sleeping HF Space, or wrong `VITE_API_BASE` | (a) Wake the Space by curling `/health`. (b) Verify `CORS_ORIGINS` matches the Cloudflare URL exactly. (c) Verify `studio/.env.production` matches the HF Space URL. Trigger a Cloudflare rebuild after changes. |
+| Top-banner red box "1 graph-level error" | Validation error not anchored to a specific node (`MISSING_INPUT_NODE`, `MISSING_OUTPUT_NODE`, `CYCLE_DETECTED`, ...) | Add the missing input/output node, or remove the back-edge that creates the cycle. Banner dismisses on next Validate. |
+| Git Push: `HTTP 401: bad token` | PAT expired or wrong scope | Regenerate token. GitHub: `Contents: read & write` on the repo. GitLab: `api` scope. |
+| Git Push: `HTTP 404` on `/git/ref/heads/main` then succeeds | Target branch doesn't exist | Expected — engine auto-creates the branch off the default branch on first push. |
+| Git Pull: `file 'project.json' not found at ref 'main'` | Path doesn't exist on that ref | Verify the file exists on the branch, or set the Path field to the correct location. |
+| GitLab self-hosted: `network error` | Wrong base URL | Set the GitLab base URL field in the Push/Pull modal (e.g. `https://gitlab.example.com`). |

@@ -27,6 +27,17 @@ Key divergences:
   SigV4 / A2A.
 - **Container base:** `python:3.12-slim` running `python -m agent.runner`
   on `:8080`, replacing the Lambda base image.
+- **Git integration:** engine exposes `POST /git/push` and `POST /git/pull`
+  (GitHub REST v3 Trees API + GitLab REST v4 Commits API) so the Studio
+  can push generated repos and round-trip-edit `project.json` straight
+  out of GitHub/GitLab.
+- **Platform hosting (free):** Studio on Cloudflare Workers Assets, engine
+  on Hugging Face Spaces (Docker SDK on :7860). See
+  [docs/user-guide.md](docs/user-guide.md) for the deploy procedure.
+- **Studio UX:** Help modal (`?` shortcut), Import ZIP (client-side via
+  JSZip), Git modal w/ provider switcher, engine health indicator
+  polling `/health` every 15 s, global errors banner over the canvas for
+  graph-level validation errors not anchored to a node.
 
 ---
 
