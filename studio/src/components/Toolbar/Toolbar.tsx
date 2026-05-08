@@ -3,6 +3,7 @@ import { useGraphStore } from '../../store/graphStore';
 import { validateGraph, generateZip, checkEngineHealth } from '../../api/engine';
 import { importAgentZip, ImportError } from '../../api/import';
 import { HelpPanel } from '../Help/HelpPanel';
+import { GitPanel } from '../GitPanel/GitPanel';
 
 type EngineHealth = 'unknown' | 'ok' | 'down';
 
@@ -50,6 +51,7 @@ export function Toolbar() {
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
+  const [gitOpen, setGitOpen] = useState(false);
   const [engineHealth, setEngineHealth] = useState<EngineHealth>('unknown');
   const [healthError, setHealthError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -196,6 +198,15 @@ export function Toolbar() {
       </button>
 
       <button
+        onClick={() => setGitOpen(true)}
+        disabled={status === 'validating' || status === 'generating'}
+        title="Push generated repo to GitHub/GitLab, or pull project.json back"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg disabled:opacity-50 transition-colors"
+      >
+        <span>🔀</span> Git
+      </button>
+
+      <button
         onClick={onValidate}
         disabled={status === 'validating' || status === 'generating'}
         className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg disabled:opacity-50 transition-colors"
@@ -221,6 +232,7 @@ export function Toolbar() {
       </button>
 
       {helpOpen && <HelpPanel onClose={() => setHelpOpen(false)} />}
+      {gitOpen && <GitPanel onClose={() => setGitOpen(false)} />}
     </header>
   );
 }
