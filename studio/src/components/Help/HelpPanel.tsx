@@ -182,6 +182,30 @@ function Quickstart() {
         is non-empty.
       </Callout>
 
+      <H2>Git integration (GitHub / GitLab)</H2>
+      <P>
+        Click <strong>🔀 Git</strong> in the toolbar to push the full generated repo (Python,
+        Terraform, tests, Docker, <Code>project.json</Code>) to a GitHub or GitLab repo, or pull
+        a previously pushed <Code>project.json</Code> back into the canvas.
+      </P>
+      <Steps
+        items={[
+          <>
+            Create a Personal Access Token. <strong>GitHub:</strong> Settings → Developer settings →
+            Tokens (fine-grained) → scopes <Code>Contents: read &amp; write</Code> on the target repo.{' '}
+            <strong>GitLab:</strong> User settings → Access Tokens → scope <Code>api</Code>.
+          </>,
+          <>Open the Git modal, pick GitHub or GitLab, paste the token, and enter the repo (<Code>owner/name</Code> or <Code>group/project</Code>).</>,
+          <><strong>Push</strong> tab → set branch + commit message → click Push. Engine validates the graph, runs the full pipeline, and atomically commits every generated file.</>,
+          <><strong>Pull</strong> tab → set ref (branch/tag/SHA) and path (defaults to <Code>project.json</Code>) → click Pull. Canvas is replaced with the loaded graph.</>,
+        ]}
+      />
+      <Callout kind="info">
+        Tokens are stored only in browser <Code>localStorage</Code> and forwarded to the engine
+        once per request. The engine never persists them. Use HTTPS for the engine endpoint
+        when deploying publicly.
+      </Callout>
+
       <H2>Build your first graph in 5 steps</H2>
       <Steps
         items={[
