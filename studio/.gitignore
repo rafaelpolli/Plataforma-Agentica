@@ -1,0 +1,10 @@
+# Build output
+dist/
+
+# Local env overrides
+.env
+.env.local
+.env.*.local
+
+# Vite cache (frequently churns)
+node_modules/.vite/

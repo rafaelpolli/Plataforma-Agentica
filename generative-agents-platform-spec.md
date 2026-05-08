@@ -1,8 +1,32 @@
 # Generative Agents Platform — Technical Specification
 
-**Version:** 1.0.0  
-**Status:** Draft  
+**Version:** 1.0.0
+**Status:** Draft (original intent)
 **Last updated:** 2026-05-04
+**Implementation status:** As of 2026-05-06 (commit `0f44844`) the codebase
+diverges from this spec on several runtime and observability decisions.
+The spec is preserved as the original design intent; the **source of truth
+for current behavior is the code + `CLAUDE.md` + `docs/agentcore-gaps.md`**.
+
+Key divergences:
+- **Hosting:** Agent runs on **AgentCore Runtime** (container, not Lambda).
+  Generated `runner.py` uses `BedrockAgentCoreApp` with `@app.entrypoint`
+  (and `@app.streaming_entrypoint` when streaming). No `lambda_handler` is
+  emitted for the agent. Per-tool Lambdas are still generated.
+- **Observability:** **AgentCore Observability** (auto-instrumentation →
+  CloudWatch GenAI) replaces LangSmith entirely. No `LANGCHAIN_*` env
+  vars, no `langsmith` dependency.
+- **Memory:** AgentCore Memory uses real SDK API
+  (`MemoryClient.create_event` + `retrieve_memories`) with semantic +
+  summary + user_preference strategies. DynamoDB checkpointer is reserved
+  for HITL `interrupt()` resume only.
+- **OAuth2 token vending:** AgentCore Identity (`IdentityClient.get_token`)
+  replaces manual httpx token caching in `tool_http`.
+- **Public HTTP:** API Gateway → thin `agentcore_invoker` Lambda →
+  `bedrock-agentcore:InvokeAgentRuntime`. Direct callers can bypass via
+  SigV4 / A2A.
+- **Container base:** `python:3.12-slim` running `python -m agent.runner`
+  on `:8080`, replacing the Lambda base image.
 
 ---
 
@@ -850,7 +874,7 @@ Stores and retrieves intermediate results.
 
 #### `logger`
 
-Emits structured events to CloudWatch and LangSmith.
+Emits structured events to CloudWatch (correlated with AgentCore Observability spans via OTEL `trace_id`).
 
 ```json
 {
@@ -905,7 +929,7 @@ Graph JSON (DAG)
        │ local scripts
        ▼
 ┌───────────────────────────┐
-│  Observability Injector   │ ── injects LangSmith + CloudWatch
+│  Observability Injector   │ ── injects AgentCore Observability + CloudWatch
 └──────┬────────────────────┘
        │ instrumented code
        ▼
@@ -1090,65 +1114,74 @@ graph = build_graph()
 
 #### Step 4 — Runner / entrypoint (`runner.py`)
 
-Two entry points are generated: a Lambda handler and a CLI runner.
+The runner is a **BedrockAgentCoreApp**. The agent runs inside an AgentCore
+Runtime container (no Lambda for the agent). `app.run()` starts an HTTP
+server on `0.0.0.0:8080`. AgentCore Runtime injects `session_context`
+(session_id, actor_id) per invocation.
 
 ```python
 # runner.py (generated)
+from __future__ import annotations
 import json
 import uuid
+
+from langchain_core.messages import HumanMessage
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
 from .graph import graph
 from .state import AgentState
 
-# --- Synchronous Lambda handler (agent.streaming = false) ---
-def lambda_handler(event: dict, context) -> dict:
-    body = json.loads(event.get("body", "{}")) if isinstance(event.get("body"), str) else event.get("body", {})
-    thread_id = body.get("thread_id", str(uuid.uuid4()))
-    config = {"configurable": {"thread_id": thread_id}}
+app = BedrockAgentCoreApp()
 
-    state = AgentState(
-        messages=[],
-        user_input=body.get("message", ""),
-        retrieved_documents=[],
-        tool_results=[],
-        final_response=""
+
+def _build_initial_state(body: dict, actor_id: str, session_id: str) -> AgentState:
+    message = body.get("message", "")
+    return AgentState(
+        messages=[HumanMessage(content=message)] if message else [],
+        actor_id=actor_id,
+        session_id=session_id,
+        **{k: v for k, v in body.items() if k not in ("message", "thread_id", "actor_id", "session_id")},
     )
-    result = graph.invoke(state, config=config)
-    return {
-        "statusCode": 200,
-        "body": json.dumps({"response": result["final_response"], "thread_id": thread_id})
-    }
 
-# --- Streaming Lambda handler (agent.streaming = true) ---
-# Requires Lambda response streaming enabled in Terraform:
-#   aws_lambda_function_event_invoke_config + FunctionResponseTypes = ["STREAMRESPONSE"]
-# API Gateway must use a WebSocket route or HTTP chunked transfer.
-async def streaming_lambda_handler(event: dict, context):
-    """Generated only when at least one agent node has streaming=true."""
-    body = json.loads(event.get("body", "{}")) if isinstance(event.get("body"), str) else event.get("body", {})
-    thread_id = body.get("thread_id", str(uuid.uuid4()))
+
+@app.entrypoint
+async def invoke(payload: dict, session_context: dict) -> dict:
+    body = payload if isinstance(payload, dict) else {}
+    session_id = session_context.get("session_id") or body.get("thread_id") or str(uuid.uuid4())
+    actor_id = session_context.get("actor_id") or session_context.get("user_id") or body.get("actor_id") or "anonymous"
+    thread_id = session_id
     config = {"configurable": {"thread_id": thread_id}}
+    state = _build_initial_state(body, actor_id=actor_id, session_id=session_id)
 
-    state = AgentState(
-        messages=[],
-        user_input=body.get("message", ""),
-        retrieved_documents=[],
-        tool_results=[],
-        final_response=""
-    )
+    result = await graph.ainvoke(state, config=config)
+    final_output = result.get("final_output") or (result.get("messages", [])[-1].content if result.get("messages") else "")
+    return {"response": final_output, "thread_id": thread_id}
+
+
+# --- Streaming entrypoint (only when at least one agent has streaming=true) ---
+@app.streaming_entrypoint
+async def invoke_stream(payload: dict, session_context: dict):
+    body = payload if isinstance(payload, dict) else {}
+    session_id = session_context.get("session_id") or body.get("thread_id") or str(uuid.uuid4())
+    actor_id = session_context.get("actor_id") or "anonymous"
+    config = {"configurable": {"thread_id": session_id}}
+    state = _build_initial_state(body, actor_id=actor_id, session_id=session_id)
+
     async for chunk in graph.astream(state, config=config, stream_mode="messages"):
-        message, metadata = chunk
+        message, _ = chunk
         if hasattr(message, "content") and message.content:
-            yield json.dumps({"token": message.content, "thread_id": thread_id}).encode() + b"\n"
+            yield {"token": message.content, "thread_id": session_id}
 
-# --- CLI entrypoint (used by local/run_agent.py) ---
+
 if __name__ == "__main__":
-    import sys
-    payload = json.loads(sys.argv[1])
-    thread_id = payload.pop("thread_id", str(uuid.uuid4()))
-    config = {"configurable": {"thread_id": thread_id}}
-    result = graph.invoke(AgentState(**payload), config=config)
-    print(json.dumps(result, indent=2))
+    # Container entrypoint — AgentCore Runtime executes this command.
+    app.run()
 ```
+
+> **No `lambda_handler` is generated.** Public HTTP fronting goes via
+> API Gateway → a tiny `agentcore_invoker` Lambda (≈80 lines) →
+> `bedrock-agentcore:InvokeAgentRuntime`. Direct callers (A2A / SigV4)
+> bypass API GW and hit the AgentCore Runtime endpoint directly.
 
 ### 7.4 Multi-agent compilation
 
@@ -1250,7 +1283,7 @@ The ZIP includes a `README.md` with:
 - Step-by-step local simulation instructions
 - Step-by-step deploy instructions (Terraform init → plan → apply)
 - Environment variable reference table
-- LangSmith setup instructions
+- AgentCore Observability is auto-instrumented in-container; no setup needed
 - Architecture diagram (text-based)
 
 ### 8.3 Python dependency stack
@@ -1269,13 +1302,12 @@ dependencies = [
     "langchain-aws>=0.2",
     "langchain-community>=0.3",
     "boto3>=1.35",
-    "agentcore-sdk>=0.1",            # PyPI package name to be confirmed; see Section 18
-    "fastapi>=0.115",
-    "uvicorn>=0.30",
-    "langsmith>=0.1",
+    "bedrock-agentcore>=0.1",        # AgentCore Runtime/Memory/Identity/Tools/MCP/Observability SDK
+    "langchain-mcp-adapters>=0.1",   # mcp_client integration
     "pydantic>=2.0",
     "jmespath>=1.0",                 # condition node jmespath expression language
-    "cel-python>=0.1.5",             # condition node cel (sandboxed) expression language
+    "celpy>=0.1.5",                  # condition node cel (sandboxed) expression language
+    "httpx>=0.27",                   # tool_http
 ]
 
 [project.optional-dependencies]
@@ -1412,37 +1444,49 @@ def get_all_tools():
 
 ## 11. Observability
 
-### 11.1 LangSmith
+### 11.1 AgentCore Observability (current)
 
-LangSmith tracing is automatically injected into all chains and agents by the Observability Injector component.
+**Implementation status:** LangSmith was removed in favor of **Amazon
+Bedrock AgentCore Observability**. The Observability Injector now emits
+`agent/observability.py` with:
 
-**Configuration (environment variables):**
+```python
+from bedrock_agentcore.observability import configure as _configure_observability
 
+_configure_observability(
+    service_name=AGENT_NAME,
+    enable_genai_spans=True,
+    enable_langchain_instrumentation=True,
+)
 ```
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=secret://langsmith-api-key
-LANGCHAIN_PROJECT={agent-name}
-LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
-```
 
-Each execution generates a LangSmith `run` with:
+This module is side-effect-imported at the top of `agent/runner.py`. When
+the container runs inside AgentCore Runtime, the SDK auto-instruments
+LangGraph / LangChain calls and ships OpenTelemetry traces + GenAI spans
+to **Amazon CloudWatch GenAI Observability**. No external SaaS keys, no
+`LANGCHAIN_*` env vars, no `langsmith` PyPI dependency.
+
+What's captured per invocation:
 - Full input and output at each node
 - Latency per step
 - Token usage per LLM call
 - Tool call arguments and results
 - Error traces with full stack context
+- A2A protocol session metadata (when AgentCore Runtime invocation)
 
 ### 11.2 Amazon CloudWatch
 
-**Logs:** All Lambda functions and AgentCore workloads emit structured JSON logs:
+**Logs:** All Lambda functions and the AgentCore Runtime container emit
+structured JSON logs:
 
 ```json
 {
-  "timestamp": "2026-05-04T10:00:00Z",
+  "timestamp": "2026-05-06T10:00:00Z",
   "level": "INFO",
   "agent_name": "my-agent",
-  "run_id": "abc123",
-  "langsmith_run_id": "ls-xyz789",
+  "session_id": "sess-abc123",
+  "actor_id": "user-42",
+  "trace_id": "1-660abc12-…",
   "node_id": "node_abc123",
   "message": "Tool execution completed",
   "tool_name": "check_inventory",
@@ -1450,7 +1494,11 @@ Each execution generates a LangSmith `run` with:
 }
 ```
 
-**Custom metrics (emitted per invocation):**
+`trace_id` is the OpenTelemetry trace ID minted by AgentCore
+Observability — open it directly in CloudWatch GenAI Observability for
+the full span tree.
+
+**Custom metrics (emitted via `agent/observability.py::emit_metric`):**
 
 | Metric | Unit | Description |
 |---|---|---|
@@ -1459,10 +1507,9 @@ Each execution generates a LangSmith `run` with:
 | `TokensConsumed` | Count | Total tokens (input + output) per invocation |
 | `ToolErrorRate` | Percent | Error rate per tool function |
 
-**Alarms (generated Terraform):**
+**Alarms (generated Terraform — when wired):**
 
 ```hcl
-# infra/cloudwatch.tf (generated)
 resource "aws_cloudwatch_metric_alarm" "latency_p95" {
   alarm_name          = "${var.agent_name}-latency-p95"
   comparison_operator = "GreaterThanThreshold"
@@ -1477,7 +1524,10 @@ resource "aws_cloudwatch_metric_alarm" "latency_p95" {
 
 ### 11.3 Cross-system correlation
 
-The `run_id` from LangSmith is propagated as a field in every CloudWatch log entry (`langsmith_run_id`). This allows a developer to go from a CloudWatch log error directly to the full LangSmith trace for that execution.
+The OTEL `trace_id` from AgentCore Observability is included in every
+CloudWatch structured log entry. Click through from a log entry in
+`/aws/bedrock-agentcore/{agent_name}` to the GenAI Observability span tree
+to debug any execution end-to-end.
 
 ---
 
@@ -1842,8 +1892,8 @@ The Studio surfaces a migration warning to the user before opening the canvas.
 │       -H "Content-Type: application/json" \                        │
 │       -d '{"message": "Hello, agent!"}'                            │
 │                                                                     │
-│     # Verify trace in LangSmith project: {agent-name}              │
-│     # Verify logs in CloudWatch: /aws/agentcore/{agent-name}       │
+│     # Verify trace in CloudWatch GenAI Observability                │
+│     # Verify logs in CloudWatch: /aws/bedrock-agentcore/{agent-name}│
 └──────────────────────────────┬──────────────────────────────────────┘
                                │
 ┌──────────────────────────────▼──────────────────────────────────────┐
@@ -1932,7 +1982,7 @@ Each generated agent receives a dedicated IAM execution role with permissions sc
 
 ### 16.3 Secrets management
 
-External API keys, LangSmith API keys, and other sensitive configuration are stored in **AWS Secrets Manager** and referenced in generated code as:
+External API keys and other sensitive configuration are stored in **AWS Secrets Manager** and referenced in generated code as:
 
 ```python
 # config.py (generated)
@@ -1950,14 +2000,14 @@ def get_secret(secret_name: str) -> str:
     return response["SecretString"]
 
 # Usage — values are resolved on first call, not at import time:
-def langsmith_api_key() -> str:
-    return get_secret("my-agent/langsmith-api-key")
-
 def external_api_key() -> str:
     return get_secret("my-agent/external-api-key")
 ```
 
-Call sites use `langsmith_api_key()` rather than a module-level constant. The platform never embeds resolved secret values in generated files.
+Call sites use `external_api_key()` accessor functions rather than a
+module-level constant. The platform never embeds resolved secret values
+in generated files. OAuth2 client credentials are vended by **AgentCore
+Identity** (`IdentityClient.get_token`), not Secrets Manager.
 
 ### 16.4 Bedrock guardrails
 
@@ -2004,20 +2054,26 @@ All platform actions (project export, deploy events) and runtime AWS API calls a
 |---|---|
 | Agent framework | LangGraph |
 | LLM abstractions | LangChain |
-| AWS integration | boto3, agentcore-sdk |
-| MCP server | agentcore-sdk (MCP Runtime) |
-| HTTP server | FastAPI + uvicorn |
-| Observability | LangSmith, CloudWatch |
+| AWS integration | boto3, bedrock-agentcore |
+| Runtime host | AgentCore Runtime (container) — `BedrockAgentCoreApp` on :8080 |
+| MCP server | bedrock-agentcore (`MCPServer`), exposed via AgentCore Gateway |
+| Memory | AgentCore Memory (semantic + summary + user_preference strategies) |
+| Identity / OAuth2 | AgentCore Identity (`IdentityClient.get_token`) |
+| Observability | AgentCore Observability → CloudWatch GenAI Observability |
 | Dependency management | uv |
 | Testing | pytest, moto, responses |
-| Container | Docker (python:3.12-slim, multi-stage) |
+| Container | Docker `python:3.12-slim` running `python -m agent.runner` |
 
 ### AWS services (runtime)
 
 | Service | Role |
 |---|---|
-| Amazon AgentCore | Agent + MCP Server runtime |
-| AWS Lambda | Tool execution |
+| Amazon Bedrock AgentCore Runtime | Agent container hosting (replaces Lambda for the agent) |
+| Amazon Bedrock AgentCore Memory | Semantic + episodic + user_preference memory |
+| Amazon Bedrock AgentCore Gateway | REST↔MCP bridge for `mcp_server` nodes |
+| Amazon Bedrock AgentCore Identity | M2M OAuth2 token vending for `tool_http` |
+| Amazon Bedrock AgentCore Tools | Code Interpreter + Browser sandboxes |
+| AWS Lambda | Per-tool execution + API GW invoker bridge to AgentCore Runtime |
 | Amazon Bedrock | LLMs and embeddings |
 | Amazon S3 | Document storage |
 | Amazon S3 Vectors | Vector store |
@@ -2040,8 +2096,10 @@ All platform actions (project export, deploy events) and runtime AWS API calls a
 | Multi-workspace / RBAC | Out of scope |
 | Authentication | Cognito or corporate SSO, developer's choice |
 | Generated artifact destination | ZIP download, no license restrictions |
-| MCP Server execution | AgentCore Runtime |
-| Observability stack | CloudWatch + LangSmith |
+| MCP Server execution | AgentCore Runtime via AgentCore Gateway target |
+| Observability stack | AgentCore Observability → CloudWatch GenAI (LangSmith dropped) |
+| Agent runtime host | AgentCore Runtime container (no Lambda for the agent) |
+| OAuth2 token vending | AgentCore Identity (`bedrock_agentcore.identity.IdentityClient`) |
 | Test generation strategy | Unit tests only (pytest + mocks) |
 | Local simulation | Python scripts + Docker |
 | Project import/export | Supported via `project.json` in ZIP |
@@ -2054,15 +2112,16 @@ All platform actions (project export, deploy events) and runtime AWS API calls a
 |---|---|
 | **Additional LLM providers** | OpenAI, Google Vertex AI, Ollama. Architecture supports it via LangChain provider swap. |
 | **CI/CD scaffold for generated ZIPs** | Optional GitHub Actions / GitLab CI pipeline generation alongside the ZIP. |
-| **Agent evals** | LangSmith eval datasets and run comparisons for regression testing of agent quality. |
+| **Agent evals** | AgentCore Observability + custom CloudWatch metrics for run comparisons; integration with managed eval frameworks under evaluation. |
 | **Platform upgrade path** | How the platform itself (Studio + Engine) is upgraded without losing saved graphs. |
 | **Custom node SDK** | Public API for developing and registering custom node types beyond the built-in catalog. |
 | **Node versioning** | Individual node type versioning to handle deprecations without breaking existing graphs. |
 | **Streaming UI** | Real-time token streaming from the agent to the Studio preview panel. |
 | **Cost estimation** | Pre-deploy Terraform cost estimation (Infracost integration). |
 | **ElastiCache cache backend** | Redis via ElastiCache as an alternative to DynamoDB for the `cache` node. Lower latency for high-frequency caching. Requires VPC configuration for Lambda. Deferred from v1 due to added infrastructure complexity. |
-| **Long-running workflow strategy** | Complex `multi_agent_coordinator` graphs may exceed Lambda's 15-minute execution limit. Planned solution: optional AWS Step Functions scaffold generation (Express Workflows) for workflows where estimated execution time exceeds 10 minutes. |
-| **`agentcore-sdk` package name** | Confirm the exact PyPI package name and distribution channel (public PyPI vs. private registry) for `agentcore-sdk`. Update `pyproject.toml` template accordingly before v1 release. |
+| **Long-running workflow strategy** | AgentCore Runtime sessions are 8 hours, so the agent path no longer hits Lambda's 15-min limit. Per-tool Lambdas still bound by 15 min — Step Functions scaffold remains planned for tool nodes that may exceed it. |
+| **AgentCore feature flag** | Customer's AWS account must have the Bedrock AgentCore feature enabled before `terraform apply`. No automated enablement check yet. |
+| **S3 Vectors index Terraform** | No `aws` provider resource for S3 Vectors index creation as of 2026-05-06; tracked at terraform-provider-aws #43438. Customers create the index manually or via a `null_resource` shim. |
 
 ---
 
