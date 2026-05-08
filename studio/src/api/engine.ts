@@ -1,6 +1,16 @@
 import type { Project, ValidationResult } from '../types/graph';
 
-const API_BASE = '/api';
+/**
+ * Engine base URL.
+ *
+ * Local dev: defaults to '/api', proxied to http://localhost:8000 by vite.config.ts.
+ * Production: set VITE_API_BASE=https://your-engine-host.example.com at build time.
+ *   - Cloudflare Pages: Settings → Environment variables → VITE_API_BASE
+ *   - Vercel/Netlify: Project settings → Environment variables
+ * Trailing slash is stripped so callers can always use `${API_BASE}/path`.
+ */
+const RAW_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
+const API_BASE = RAW_BASE.replace(/\/+$/, '');
 
 export interface HealthResult {
   ok: boolean;
