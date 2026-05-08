@@ -39,11 +39,20 @@ AWS Runtime (AgentCore Runtime + Memory + Gateway + Identity + Bedrock + S3 Vect
 
 **Frontend (Studio):** React 18, TypeScript, React Flow (canvas),
 schema-driven config forms, JSZip for ZIP import. Help panel modal
-(`?` shortcut). Talks to engine over `/api` (Vite dev proxy → port 8000).
+(`?` shortcut). Git modal (push/pull GitHub or GitLab). Engine health
+indicator (polls `/health` every 15s). Global errors banner over the
+canvas for graph-level validation errors. Talks to engine over
+`VITE_API_BASE` env var (build-time inlined by Vite); falls back to
+`/api` for local Vite proxy → port 8000.
 
 **Backend (Engine):** Python 3.12+, FastAPI. Endpoints: `GET /health`,
-`POST /validate`, `POST /generate` (returns ZIP). Mangum adapter for Lambda
-deploy; uvicorn for local.
+`POST /validate`, `POST /generate` (returns ZIP), `POST /git/push`,
+`POST /git/pull`. Mangum adapter for Lambda deploy; uvicorn for local;
+Dockerfile + HF Space frontmatter for Hugging Face Spaces deploy.
+
+**CORS:** `engine/main.py::_cors_origins()` reads the `CORS_ORIGINS` env
+var (comma-separated). Defaults to localhost Vite ports when unset. Set
+to the deployed Studio origin in production.
 
 ## Generated Artifact Tech Stack
 
@@ -237,6 +246,46 @@ dict) -> dict`.
 - **Customer owns generated code** — no license restrictions on ZIP contents
 - **Self-hosted** — zero external SaaS runtime dependencies after install (no LangSmith, no third-party tracing)
 - **Streaming:** when `agent.streaming=true`, runner emits `@app.streaming_entrypoint` (AgentCore Runtime handles transport, backpressure, reconnection — no Lambda response-streaming gymnastics)
+
+## Hosting (current free deploy)
+
+Studio: **Cloudflare Workers Assets** via [studio/wrangler.toml](studio/wrangler.toml).
+SPA fallback via `not_found_handling = "single-page-application"` (NOT
+`_redirects` — Workers Assets rejects the recursive rule). Engine URL
+inlined at build via [studio/.env.production](studio/.env.production)
+(committed; engine URL is public). Cloudflare Workers Assets does NOT
+support runtime variables on assets-only deploys, so build-time env via
+the file is the working path.
+
+Engine: **Hugging Face Spaces** Docker SDK. [engine/Dockerfile](engine/Dockerfile)
+binds 0.0.0.0:7860 (HF requires this). [engine/README.md](engine/README.md)
+contains the YAML frontmatter (`sdk: docker`, `app_port: 7860`).
+Deployed via `git subtree split --prefix=engine HEAD` then
+`git push hf <sha>:main`.
+
+CORS wired through `CORS_ORIGINS` env var on the HF Space pointing to the
+Cloudflare Workers URL. See [docs/user-guide.md](docs/user-guide.md) for
+end-to-end deploy steps.
+
+## Git Integration
+
+`POST /git/push` and `POST /git/pull` in [engine/engine/main.py](engine/engine/main.py).
+Providers in [engine/engine/integrations/git.py](engine/engine/integrations/git.py):
+- `GitHubClient`: REST v3 via Trees API (atomic blob → tree → commit → ref update)
+- `GitLabClient`: REST v4 single-call Commits API w/ `create`/`update` actions
+
+Both auto-create the target branch off the repo default if missing. Tokens
+(PATs) are passed per-request and never persisted server-side. Stdlib
+`urllib` only — no new deps. `GitProviderError` surfaces upstream HTTP
+status + body verbatim so 401/404/422 are diagnosable in the UI.
+
+Studio modal: [studio/src/components/GitPanel/GitPanel.tsx](studio/src/components/GitPanel/GitPanel.tsx).
+Tokens stored in browser `localStorage` keyed per provider. Pull confirms
+before overwriting the canvas. Result links to the produced commit URL.
+
+Tests: [engine/tests/test_git_integration.py](engine/tests/test_git_integration.py)
+(13 tests w/ urllib stub) — covers branch auto-create, atomic commit shape,
+provider auth errors, endpoint validation. Full engine suite: 56/56.
 
 ## Open Items Affecting Implementation
 

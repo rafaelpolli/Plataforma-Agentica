@@ -267,7 +267,7 @@ Only when no AgentCore primitive exists:
 cd engine
 uv sync
 uv run pytest tests/ -v
-# 43 passed
+# 56 passed (43 core + 13 Git integration)
 ```
 
 Spot-check generated artifacts:
