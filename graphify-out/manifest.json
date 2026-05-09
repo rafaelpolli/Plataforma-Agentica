@@ -1,0 +1,182 @@
+{
+  "C:\\Plataforma Agentica\\engine\\engine\\main.py": {
+    "mtime": 1777979615.0785465,
+    "hash": "94a212e84189a2d7f5c3c4565b43b52c"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\_types.py": {
+    "mtime": 1777977250.771039,
+    "hash": "1087c6ff7d2af179a0a1748605f6ff81"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\__init__.py": {
+    "mtime": 1777947485.833194,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\models\\graph.py": {
+    "mtime": 1778031140.8689208,
+    "hash": "41de64b56450433406e79cc6664e8e68"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\models\\__init__.py": {
+    "mtime": 1777947486.845763,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\bundler.py": {
+    "mtime": 1777977224.1477566,
+    "hash": "45f54d77cb588d8577e773e8b3abf969"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\iac_generator.py": {
+    "mtime": 1778031379.4350479,
+    "hash": "2ea793d7252f13c987af9585d27a667a"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\local_scaffold.py": {
+    "mtime": 1778031425.960941,
+    "hash": "49b3a44facc8d1bf3dc12235c49d180a"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\observability.py": {
+    "mtime": 1777977214.4368956,
+    "hash": "f9cc2c98255df4e21b1ae07cd93379e2"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\test_generator.py": {
+    "mtime": 1777977165.9004397,
+    "hash": "d2d61f1739b1ee5beaa1b08349084e62"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\validator.py": {
+    "mtime": 1778031159.5317497,
+    "hash": "378d8f17932b732cf4e2192fa019dd50"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\__init__.py": {
+    "mtime": 1777947487.8708458,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\compiler\\compiler.py": {
+    "mtime": 1778031178.6682582,
+    "hash": "49359b5d96c51a65d83b4de226335161"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\compiler\\config_gen.py": {
+    "mtime": 1778031173.5388002,
+    "hash": "9768f4f2c9218f205a3434dded07dca3"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\compiler\\graph_gen.py": {
+    "mtime": 1778029840.9145572,
+    "hash": "cbe3f96c0fd814fbf6730b43c7b1fc53"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\compiler\\node_gen.py": {
+    "mtime": 1778031283.3805313,
+    "hash": "a390fc86dbdaac9796272b79febce903"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\compiler\\runner_gen.py": {
+    "mtime": 1778031414.3007102,
+    "hash": "463b3171f131953377e0a42522bd27cb"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\compiler\\state_gen.py": {
+    "mtime": 1777947575.12723,
+    "hash": "4fa70870af6b3018daa917a75a8d20fb"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\compiler\\tool_gen.py": {
+    "mtime": 1777947640.3518813,
+    "hash": "6088894b70edc09d277d00fe80bb12a9"
+  },
+  "C:\\Plataforma Agentica\\engine\\engine\\pipeline\\compiler\\__init__.py": {
+    "mtime": 1777947488.8952897,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Plataforma Agentica\\engine\\tests\\conftest.py": {
+    "mtime": 1778030031.553343,
+    "hash": "75b555e8a5545793e52da33a9692ed75"
+  },
+  "C:\\Plataforma Agentica\\engine\\tests\\test_compiler.py": {
+    "mtime": 1777977317.839856,
+    "hash": "926101e79f9e4c6a9d4890ace3deb0cd"
+  },
+  "C:\\Plataforma Agentica\\engine\\tests\\test_validator.py": {
+    "mtime": 1777977296.7079675,
+    "hash": "fd630f0181cfb00b7e296ab003cc1d28"
+  },
+  "C:\\Plataforma Agentica\\engine\\tests\\__init__.py": {
+    "mtime": 1777947489.918781,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Plataforma Agentica\\studio\\postcss.config.js": {
+    "mtime": 1777979368.492739,
+    "hash": "c735540bb63936a123bc867d950c9f69"
+  },
+  "C:\\Plataforma Agentica\\studio\\tailwind.config.js": {
+    "mtime": 1777979367.4691212,
+    "hash": "ec9c4f9f56e13937d4aee177b0db2ed5"
+  },
+  "C:\\Plataforma Agentica\\studio\\vite.config.ts": {
+    "mtime": 1777979361.4272764,
+    "hash": "5047f922e48af4774aff4d2197705828"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\App.tsx": {
+    "mtime": 1777979602.5840855,
+    "hash": "a7bd004034402294d8a0357b3d3c8cba"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\main.tsx": {
+    "mtime": 1777979392.0099804,
+    "hash": "b603424d995064d8ee48706d84a4ddff"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\api\\engine.ts": {
+    "mtime": 1777979385.2514453,
+    "hash": "fa2d2b68290d83ce2eaf6f124a354c93"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\components\\Canvas\\Canvas.tsx": {
+    "mtime": 1777979635.0044315,
+    "hash": "6fd7643efbb4fa441c6da2642bc57d44"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\components\\Canvas\\CustomNode.tsx": {
+    "mtime": 1778033394.481305,
+    "hash": "b080c966147166af8976130be2a1c1ca"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\components\\ConfigPanel\\ConfigPanel.tsx": {
+    "mtime": 1778027545.3577332,
+    "hash": "91a1442e35fa88d395c080288a7a3a1d"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\components\\NodeHelp\\NodeHelpModal.tsx": {
+    "mtime": 1778033409.6776211,
+    "hash": "c3628cb851ad999a232443c3cb4eeb7c"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\components\\NodeHelp\\portCompatibility.ts": {
+    "mtime": 1778033343.7893426,
+    "hash": "3dbc929bcde4f7ca07e1b6fd69fdcd21"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\components\\NodePanel\\NodePanel.tsx": {
+    "mtime": 1777979535.7982712,
+    "hash": "0d550ce840b3c30da255f216df937ca3"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\components\\Toolbar\\Toolbar.tsx": {
+    "mtime": 1777979550.1614041,
+    "hash": "ff8499f160b076e1560fb8cb3b3c1705"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\nodes\\catalog.ts": {
+    "mtime": 1778031456.8320868,
+    "hash": "8792e4b32c36b89b6e67cb0f30fae22c"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\store\\graphStore.ts": {
+    "mtime": 1778033428.4539158,
+    "hash": "0c7b646ae7ce5172e3db87faf940b26a"
+  },
+  "C:\\Plataforma Agentica\\studio\\src\\types\\graph.ts": {
+    "mtime": 1778031146.9520066,
+    "hash": "7615cb6799476dbb1802e3e7cac2b1ec"
+  },
+  "C:\\Plataforma Agentica\\CLAUDE.md": {
+    "mtime": 1777946656.020034,
+    "hash": "e828b0b88eeec430e14f260ccb21c68d"
+  },
+  "C:\\Plataforma Agentica\\generative-agents-platform-spec.md": {
+    "mtime": 1777946041.1951084,
+    "hash": "64cbd6cfc811ae8b6f4786f861aaf944"
+  },
+  "C:\\Plataforma Agentica\\docs\\agentcore-gaps.md": {
+    "mtime": 1778030709.6874273,
+    "hash": "a2c07d0c34f5f889a543e6985e71d857"
+  },
+  "C:\\Plataforma Agentica\\docs\\user-guide.md": {
+    "mtime": 1778027896.386413,
+    "hash": "32902d810af12d73bfa3786ab8dc3104"
+  },
+  "C:\\Plataforma Agentica\\studio\\index.html": {
+    "mtime": 1777979369.5807347,
+    "hash": "31cd59bea9b39e8482b459d4479c582e"
+  }
+}
