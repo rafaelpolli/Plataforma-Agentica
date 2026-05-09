@@ -1,0 +1,125 @@
+@import '@xyflow/react/dist/style.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: #FAFAF8;
+  color: #0f0f0f;
+}
+
+/* ── Brand gradient stripe animation ── */
+.gradient-stripe {
+  background: linear-gradient(90deg, #FF6200, #FFB347, #185FA5, #FF6200);
+  background-size: 300% 100%;
+  animation: stripe 6s linear infinite;
+}
+@keyframes stripe {
+  0%   { background-position: 0% 0%; }
+  100% { background-position: 300% 0%; }
+}
+
+/* ── Cards ── */
+.card {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.07);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+}
+.card-hover:hover {
+  border-color: rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.07);
+}
+
+/* ── Metric cards ── */
+.metric-card {
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(255,98,0,.08);
+}
+
+/* ── CTA Button ── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(135deg, #FF6200, #E05200);
+  box-shadow: 0 2px 8px rgba(255,98,0,.25);
+  transition: filter .15s, transform .1s, box-shadow .2s;
+}
+.btn-primary:hover { filter: brightness(1.07); box-shadow: 0 5px 18px rgba(255,98,0,.3); }
+.btn-primary:active { transform: scale(.98); }
+
+/* ── Toast ── */
+.toast-enter { opacity: 0; transform: translateY(10px); }
+.toast-exit  { opacity: 0; transform: translateY(10px); transition: opacity .35s ease, transform .35s ease; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1cec9; border-radius: 10px; }
+
+/* ── Nav links ── */
+.nav-link {
+  position: relative; display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px;
+  font-size: 13px; font-weight: 500; color: #6b7280;
+  transition: color .15s, background .15s; text-decoration: none;
+}
+.nav-link:hover { color: #0f0f0f; background: rgba(0,0,0,0.04); }
+.nav-link.active { color: #0f0f0f; font-weight: 600; }
+.nav-link.active::after {
+  content: ''; position: absolute; bottom: -1px; left: 12px; right: 12px;
+  height: 2px; background: #FF6200; border-radius: 2px 2px 0 0;
+}
+
+/* ── React Flow overrides for light theme ── */
+.react-flow__background {
+  background-color: #FAFAF8;
+}
+.react-flow__minimap {
+  background-color: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.react-flow__controls {
+  background-color: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.react-flow__controls-button {
+  background-color: #fff;
+  border-color: #e5e7eb;
+  fill: #6b7280;
+}
+.react-flow__controls-button:hover {
+  background-color: #f3f4f6;
+}
+.react-flow__edge-path {
+  stroke: #9ca3af;
+  stroke-width: 2;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #FF6200;
+}
+.react-flow__handle {
+  border-width: 2px !important;
+  border-color: #fff !important;
+  width: 12px !important;
+  height: 12px !important;
+}

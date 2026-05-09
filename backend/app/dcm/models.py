@@ -1,0 +1,187 @@
+"""Pydantic models for the DCM (Data Contract Manager) domain."""
+from __future__ import annotations
+
+from datetime import date
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class UserInfo(BaseModel):
+    id: str
+    name: str
+    email: str
+    role: str  # VIEWER | CREATOR | ADMIN
+
+
+# ── Contract ─────────────────────────────────────────────────────────────────────
+
+class Location(BaseModel):
+    layer: str = "BRONZE"
+    bucket: str = ""
+    path: str = ""
+    format: str = "PARQUET"
+    compression: str = "SNAPPY"
+
+
+class SLA(BaseModel):
+    freshness: str = "daily"
+    max_latency_minutes: int = 60
+    availability_percent: float = 99.0
+    retention_days: int = 365
+    alert_email: str = ""
+
+
+class Partitioning(BaseModel):
+    strategy: str = "DATE"
+    partition_column: str = ""
+    partition_format: str = "yyyy/MM/dd"
+    pruning_enabled: bool = False
+
+
+class FieldSchema(BaseModel):
+    name: str
+    type: str = "STRING"
+    nullable: bool = True
+    pk: bool = False
+    pii: str = "NONE"
+    description: str = ""
+
+
+class HistoryEntry(BaseModel):
+    version: str
+    date: str
+    author: str
+    note: str
+
+
+class Contract(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    status: str = "DRAFT"
+    version: str = "0.1.0"
+    environment: str = "DEV"
+    domain: str = ""
+    team: str = ""
+    owner: str = ""
+    source_system: str = ""
+    data_classification: str = "INTERNAL"
+    tags: list[str] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+    location: Location = Field(default_factory=Location)
+    sla: SLA = Field(default_factory=SLA)
+    partitioning: Partitioning = Field(default_factory=Partitioning)
+    fields: list[FieldSchema] = Field(default_factory=list)
+    history: list[HistoryEntry] = Field(default_factory=list)
+
+
+class ContractCreate(BaseModel):
+    name: str
+    description: str = ""
+    domain: str = ""
+    team: str = ""
+    owner: str = ""
+    source_system: str = ""
+    data_classification: str = "INTERNAL"
+    tags: str = ""
+    layer: str = "BRONZE"
+    bucket: str = ""
+    path: str = ""
+    fmt: str = "PARQUET"
+    compression: str = "SNAPPY"
+    freshness: str = "daily"
+    max_latency_minutes: int = 60
+    availability_percent: float = 99.0
+    retention_days: int = 365
+    alert_email: str = ""
+    partition_strategy: str = "DATE"
+    partition_column: str = ""
+    partition_format: str = "yyyy/MM/dd"
+    pruning_enabled: bool = False
+    fields: list[FieldSchema] = Field(default_factory=list)
+
+
+class ContractListResponse(BaseModel):
+    contracts: list[Contract]
+    total: int
+    status: str = ""
+    layer: str = ""
+    q: str = ""
+
+
+class ExportResponse(BaseModel):
+    content: str
+    lang: str
+    format: str
+    contract_name: str
+
+
+# ── Change Request ────────────────────────────────────────────────────────────────
+
+class DiffChange(BaseModel):
+    op: str
+    field: str
+    old: Any = None
+    new: Any = None
+
+
+class Diff(BaseModel):
+    version_from: str | None = None
+    version_to: str = ""
+    changes: list[DiffChange] = Field(default_factory=list)
+
+
+class Comment(BaseModel):
+    author: str
+    date: str
+    text: str
+
+
+class ChangeRequest(BaseModel):
+    id: str
+    title: str
+    type: str = "CREATE"
+    contract_id: str = ""
+    contract_name: str = ""
+    requester: str = ""
+    requester_name: str = ""
+    status: str = "OPEN"
+    created_at: str = ""
+    updated_at: str = ""
+    description: str = ""
+    diff: Diff = Field(default_factory=Diff)
+    comments: list[Comment] = Field(default_factory=list)
+
+
+class ChangeRequestListResponse(BaseModel):
+    requests: list[ChangeRequest]
+    total: int
+    status: str = ""
+
+
+class CommentCreate(BaseModel):
+    text: str
+
+
+class ApprovalResponse(BaseModel):
+    ok: bool
+    message: str = ""
+
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────────
+
+class DashboardStats(BaseModel):
+    total: int
+    pending: int
+    approved_this_month: int
+    pii_fields: int
+    by_layer: dict[str, int]
