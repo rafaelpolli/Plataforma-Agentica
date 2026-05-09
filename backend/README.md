@@ -1,8 +1,8 @@
 ---
 title: JaguarData Platform
-emoji: 
+emoji: 🐆
 colorFrom: orange
-colorTo: blue
+colorTo: orange
 sdk: docker
 app_port: 7860
 pinned: false
